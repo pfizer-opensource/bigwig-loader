@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm", "numpy", "cython"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools_scm]
+write_to = "bigwig_loader/_version.py"
+version_scheme = "post-release"
+fallback_version = "0.0.0"
+
+[project]
+name = "bigwig_loader"
+authors = [
+    {name = "Joren Retel", email = "joren.retel@pfizer.com"},
+]
+description = "Machine Learning Data Loader for Collections of BigWig Files"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["epigenetics", "bigwig", "fasta"]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Utilities"
+]
+dependencies = [
+    "numpy",
+    "cython",
+    "pandas",
+    "ncls",
+    "pyfaidx",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "universal_pathlib",
+    "natsort",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["mypy", "pytest", "pyBigWig"]
+dev = ["bigwig_loader[test]", "black", "isort", "bandit", "pip-tools", "pre-commit"]
+
+[tool.pytest.ini_options]
+log_cli = false
+log_cli_level = "DEBUG"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.mypy]
+python_version = "3.10"
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+namespace_packages = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = false
+exclude = "tests|examples|benchmark"
+
+[tool.isort]
+profile = "black"
+py_version = "38"
+force_single_line = true
+
+[[tool.mypy.overrides]]
+module = "cupy.*,zarr.*,pandas.*,numcodecs.*,fsspec.*,pyfaidx.*,ncls.*,bigwig_loader.merge_intervals.*,torch.*"
+ignore_missing_imports = true
+
+[tool.bandit]
+skips = ["B603", "B310", "B607", "B404"]
+exclude = "./tests/test_*.py"
+
+[tool.bandit.assert_used]
+skips = ["./tests/test_*.py"]
