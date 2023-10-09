@@ -36,6 +36,9 @@ class PytorchBigWigDataset(
             sequence_length.
         window_size: used to down sample the resolution of the target from sequence_length
         batch_size: batch size
+        super_batch_size: batch size that is used in the background to load data from
+            bigwig files. Should be larger than batch_size. If None, it will be equal to
+            batch_size.
         batches_per_epoch: because the length of an epoch is slightly arbitrary here,
             the number of batches can be set by hand. If not the number of batches per
             epoch will be (totol number of bases in combined intervals) // sequence_length // batch_size
@@ -53,6 +56,7 @@ class PytorchBigWigDataset(
         center_bin_to_predict: Optional[int] = 200,
         window_size: int = 1,
         batch_size: int = 256,
+        super_batch_size: Optional[int] = None,
         batches_per_epoch: Optional[int] = None,
         maximum_unknown_bases_fraction: float = 0.1,
         sequence_encoder: Optional[
@@ -70,6 +74,7 @@ class PytorchBigWigDataset(
             sequence_length=sequence_length,
             center_bin_to_predict=center_bin_to_predict,
             batch_size=batch_size,
+            super_batch_size=super_batch_size,
             batches_per_epoch=batches_per_epoch,
             maximum_unknown_bases_fraction=maximum_unknown_bases_fraction,
             sequence_encoder=sequence_encoder,
