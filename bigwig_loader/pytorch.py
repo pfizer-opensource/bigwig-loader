@@ -45,6 +45,8 @@ class PytorchBigWigDataset(
         maximum_unknown_bases_fraction: maximum number of bases in an input sequence that
             is unknown.
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
+        position_samples_buffer_size: number of intervals picked up front by the position sampler.
+            When all intervals are used, new intervals are picked.
     """
 
     def __init__(
@@ -65,6 +67,7 @@ class PytorchBigWigDataset(
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
         first_n_files: Optional[int] = None,
+        position_sampler_buffer_size: int = 100000,
     ):
         super().__init__()
         self._dataset = BigWigDataset(
@@ -81,6 +84,7 @@ class PytorchBigWigDataset(
             file_extensions=file_extensions,
             crawl=crawl,
             first_n_files=first_n_files,
+            position_sampler_buffer_size=position_sampler_buffer_size,
         )
         if window_size and window_size > 1:
             self.average_pool_target: Optional[torch.nn.AvgPool1d] = torch.nn.AvgPool1d(

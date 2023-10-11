@@ -8,7 +8,7 @@ from bigwig_loader.util import make_cumulative_index_intervals
 
 class PositionSampler:
     def __init__(
-        self, regions_of_interest: pd.DataFrame, buffer_size: int = 10000
+        self, regions_of_interest: pd.DataFrame, buffer_size: int = 100000
     ) -> None:
         self.regions_of_interest = make_cumulative_index_intervals(regions_of_interest)
         self.buffer_size = buffer_size

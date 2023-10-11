@@ -63,6 +63,7 @@ class BigWigDataset:
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
         first_n_files: Optional[int] = None,
+        position_sampler_buffer_size: int = 100000,
     ):
         self.batch_size = batch_size
         super_batch_size = super_batch_size or batch_size
@@ -94,6 +95,7 @@ class BigWigDataset:
             file_extensions=file_extensions,
             crawl=crawl,
             first_n_files=first_n_files,
+            position_sampler_buffer_size=position_sampler_buffer_size,
         )
         self._super_batch_sequences: cp.ndarray = None
         self._super_batch_targets: cp.ndarray = None
@@ -103,6 +105,7 @@ class BigWigDataset:
     def __iter__(self) -> Iterator[tuple[Any, cp.ndarray]]:
         self._n = 0
         self._offset = 0
+        iter(self._super_dataset)
         return self
 
     def __next__(self) -> tuple[Any, cp.ndarray]:
@@ -154,6 +157,9 @@ class BigWigSuperDataset:
         maximum_unknown_bases_fraction: maximum number of bases in an input sequence that
             is unknown.
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
+        position_samples_buffer_size: number of intervals picked up front by the position sampler.
+            When all intervals are used, new intervals are picked.
+
     """
 
     def __init__(
@@ -172,6 +178,7 @@ class BigWigSuperDataset:
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
         first_n_files: Optional[int] = None,
+        position_sampler_buffer_size: int = 100000,
     ):
         super().__init__()
 
@@ -205,6 +212,7 @@ class BigWigSuperDataset:
         self._crawl = crawl
         self._genome: Optional[Genome] = None
         self._prepared_out: Optional[cp.ndarray] = None
+        self._position_sampler_buffer_size = position_sampler_buffer_size
 
     @property
     def genome(self) -> Genome:
@@ -213,7 +221,8 @@ class BigWigSuperDataset:
         """
         if not self._genome:
             position_sampler = PositionSampler(
-                regions_of_interest=self.regions_of_interest
+                regions_of_interest=self.regions_of_interest,
+                buffer_size=self._position_sampler_buffer_size,
             )
             self._genome = Genome(
                 self.reference_genome_path,
@@ -245,7 +254,7 @@ class BigWigSuperDataset:
             return self._bigwig_collection
         else:
             raise RuntimeError(
-                f"{self}._bigwig_collection and {self}._bigwig_path are bot None. At least one shoudl be set."
+                f"{self}._bigwig_collection and {self}._bigwig_path are bot None. At least one should be set."
             )
 
     @property
