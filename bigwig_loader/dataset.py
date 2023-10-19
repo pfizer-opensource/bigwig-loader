@@ -33,8 +33,7 @@ class BigWigDataset:
         center_bin_to_predict: if given, only do prediction on a central window. Should be
             smaller than or equal to sequence_length. If not given will be the same as
             sequence_length.
-        window_size: used to down sample the resolution of the target from sequence_length
-        batch_size: batch size returned by the dataset
+        batch_size: batch size
         super_batch_size: batch size that is used in the background to load data from
             bigwig files. Should be larger than batch_size. If None, it will be equal to
             batch_size.
@@ -44,6 +43,15 @@ class BigWigDataset:
         maximum_unknown_bases_fraction: maximum number of bases in an input sequence that
             is unknown.
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
+        file_extensions: load files with these extensions (default .bw and .bigWig)
+        crawl: whether to search in sub-directories for BigWig files
+        first_n_files: Only use the first n files (handy for debugging on less tasks)
+        position_sampler_buffer_size: number of intervals picked up front by the position sampler.
+            When all intervals are used, new intervals are picked.
+        repeat_same_positions: if False the positions sampler does not draw a new random collection
+            of positions when the buffer runs out, but repeats the same samples. Can be used to
+            check whether network can overfit.
+
     """
 
     def __init__(
@@ -64,6 +72,7 @@ class BigWigDataset:
         crawl: bool = True,
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
+        repeat_same_positions: bool = False,
     ):
         self.batch_size = batch_size
         super_batch_size = super_batch_size or batch_size
@@ -96,6 +105,7 @@ class BigWigDataset:
             crawl=crawl,
             first_n_files=first_n_files,
             position_sampler_buffer_size=position_sampler_buffer_size,
+            repeat_same_positions=repeat_same_positions,
         )
         self._super_batch_sequences: cp.ndarray = None
         self._super_batch_targets: cp.ndarray = None
@@ -149,7 +159,6 @@ class BigWigSuperDataset:
         center_bin_to_predict: if given, only do prediction on a central window. Should be
             smaller than or equal to sequence_length. If not given will be the same as
             sequence_length.
-        window_size: used to down sample the resolution of the target from sequence_length
         batch_size: batch size
         batches_per_epoch: because the length of an epoch is slightly arbitrary here,
             the number of batches can be set by hand. If not the number of batches per
@@ -157,8 +166,14 @@ class BigWigSuperDataset:
         maximum_unknown_bases_fraction: maximum number of bases in an input sequence that
             is unknown.
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
-        position_samples_buffer_size: number of intervals picked up front by the position sampler.
+        file_extensions: load files with these extensions (default .bw and .bigWig)
+        crawl: whether to search in sub-directories for BigWig files
+        first_n_files: Only use the first n files (handy for debugging on less tasks)
+        position_sampler_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
+        repeat_same_positions: if False the positions sampler does not draw a new random collection
+            of positions when the buffer runs out, but repeats the same samples. Can be used to
+            check whether network can overfit.
 
     """
 
@@ -179,6 +194,7 @@ class BigWigSuperDataset:
         crawl: bool = True,
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
+        repeat_same_positions: bool = False,
     ):
         super().__init__()
 
@@ -213,6 +229,7 @@ class BigWigSuperDataset:
         self._genome: Optional[Genome] = None
         self._prepared_out: Optional[cp.ndarray] = None
         self._position_sampler_buffer_size = position_sampler_buffer_size
+        self._repeat_same_positions = repeat_same_positions
 
     @property
     def genome(self) -> Genome:
@@ -223,6 +240,7 @@ class BigWigSuperDataset:
             position_sampler = PositionSampler(
                 regions_of_interest=self.regions_of_interest,
                 buffer_size=self._position_sampler_buffer_size,
+                repeat_same=self._repeat_same_positions,
             )
             self._genome = Genome(
                 self.reference_genome_path,

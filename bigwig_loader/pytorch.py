@@ -68,6 +68,7 @@ class PytorchBigWigDataset(
         crawl: bool = True,
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
+        repeat_same_positions: bool = False,
     ):
         super().__init__()
         self._dataset = BigWigDataset(
@@ -85,6 +86,7 @@ class PytorchBigWigDataset(
             crawl=crawl,
             first_n_files=first_n_files,
             position_sampler_buffer_size=position_sampler_buffer_size,
+            repeat_same_positions=repeat_same_positions,
         )
         if window_size and window_size > 1:
             self.average_pool_target: Optional[torch.nn.AvgPool1d] = torch.nn.AvgPool1d(
