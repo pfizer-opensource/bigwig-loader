@@ -21,8 +21,6 @@ class PositionSampler:
         self._index = 0
         self._repeat_same = repeat_same
 
-        print(buffer_size)
-
     def __iter__(self) -> Iterator[tuple[str, int]]:
         return self
 
