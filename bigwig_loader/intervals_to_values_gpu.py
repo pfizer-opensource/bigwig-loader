@@ -1,3 +1,5 @@
+import logging
+
 import cupy as cp
 
 _zero = cp.asarray(0.0, dtype=cp.float32).item()
@@ -15,40 +17,32 @@ void intervals_to_values(
         const int batch_size,
         const int sequence_length,
         const int max_number_intervals,
-        const int max_interval_length,
         float* out
 ) {
-
-    //printf("batch_size %d", batch_size);
-    //printf("sequence_length %d", sequence_length);
-    //printf("max_number_intervals %d", max_number_intervals);
-    //printf("max_interval_length %d", max_interval_length);
 
     int thread = blockIdx.x * blockDim.x + threadIdx.x;
 
     int i = thread % batch_size;
     int j = (thread / batch_size)%max_number_intervals;
-    int k = thread / (batch_size*max_number_intervals);
 
-    if (i <  batch_size){
+    int found_start_index = found_starts[i];
+    int found_end_index = found_ends[i];
+    int query_start = query_starts[i];
+    int query_end = query_ends[i];
 
-        int found_start_index = found_starts[i];
-        int found_end_index = found_ends[i];
-        int query_start = query_starts[i];
-        int query_end = query_ends[i];
+    int cursor = found_start_index + j;
 
-        int cursor = found_start_index + j;
+    if (cursor < found_end_index){
+        int interval_start = track_starts[cursor];
+        int interval_end = track_ends[cursor];
+        int start_index = max(interval_start - query_start, 0);
+        int end_index = (i * sequence_length) + min(interval_end, query_end) - query_start;
+        int start_position = (i * sequence_length) + start_index;
 
-        if (cursor < found_end_index){
-            int interval_start = track_starts[cursor];
-            int interval_end = track_ends[cursor];
-            int start_index = max(interval_start - query_start, 0);
-            int end_index = (i * sequence_length) + min(interval_end, query_end) - query_start;
-            int position = (i * sequence_length) + start_index + k;
+        float value = track_values[cursor];
 
-            if (position < end_index){
-                out[position] = track_values[cursor];
-            }
+        for (int position = start_position; position < end_index; position++){
+            out[position] = value;
         }
     }
 }
@@ -79,10 +73,13 @@ def intervals_to_values(
     max_number_intervals = min(
         sequence_length, (found_ends - found_starts).max().item()
     )
-    max_interval_length = min(sequence_length, (track_ends - track_starts).max().item())
     batch_size = query_starts.shape[0]
-    n_threads_needed = batch_size * max_interval_length * max_number_intervals
+    n_threads_needed = batch_size * max_number_intervals
     grid_size, block_size = get_grid_and_block_size(n_threads_needed)
+
+    logging.debug(
+        f"batch_size: {batch_size}\nmax_number_intervals: {max_number_intervals}\ngrid_size: {grid_size}\nblock_size: {block_size}"
+    )
 
     cuda_kernel(
         (grid_size,),
@@ -98,7 +95,6 @@ def intervals_to_values(
             batch_size,
             sequence_length,
             max_number_intervals,
-            max_interval_length,
             out,
         ),
     )
@@ -128,10 +124,9 @@ def kernel_in_python(
         int,
         int,
         int,
-        int,
         cp.ndarray,
     ],
-) -> list[float]:
+) -> cp.ndarray:
     """Equivalent in python to cuda_kernel. Just for debugging."""
 
     (
@@ -145,7 +140,6 @@ def kernel_in_python(
         batch_size,
         sequence_length,
         max_number_intervals,
-        max_interval_length,
         _,
     ) = args
 
@@ -160,14 +154,14 @@ def kernel_in_python(
 
     n_threads = grid_size * block_size
 
-    out = [0.0] * 4 * batch_size
+    out = [0.0] * sequence_length * batch_size
 
     for thread in range(n_threads):
         i = thread % batch_size
         j = (thread // batch_size) % max_number_intervals
-        k = thread // (batch_size * max_number_intervals)
+        # k = thread // (batch_size * max_number_intervals)
         print("---")
-        print(i, j, k)
+        print(i, j)
 
         if i < batch_size:
             found_start_index = found_starts[i]
@@ -185,13 +179,12 @@ def kernel_in_python(
                 end_index = (
                     (i * sequence_length) + min(interval_end, query_end) - query_start
                 )
-                position = (i * sequence_length) + start_index + k
-                # position = start_index + k
-                print("position", position)
-
-                if position < end_index:
+                start_position = (i * sequence_length) + start_index
+                for position in range(start_position, end_index):
+                    print("position", position)
                     out[position] = track_values[cursor]
         print(out)
 
     print(out)
+    out = cp.reshape(cp.asarray(out), (batch_size, sequence_length))
     return out
