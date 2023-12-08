@@ -3,11 +3,11 @@
 Faster batched dataloading of BigWig files and corresponding sequence data powered by GPU for deep learning applications.
 This library is meant for loading batches of data with the same dimensionality, which allows for some assumptions that can
 speed up the loading process. As can be seen from the plot below, when loading a small amount of data, pyBigWig is very fast,
-but does not exploid the batched nature of data loading for machine learning.
+but does not exploit the batched nature of data loading for machine learning.
 
 In the benchmark below we also created PyTorch dataloaders (with set_start_method('spawn')) using pyBigWig to compare to
 the realistic scenario where multiple CPUs would be used per GPU. We see that the throughput of the CPU dataloader does
-not do up linearly with the number of CPUs and therefore it becomes hard to get the needed throughput to keep the GPU,
+not go up linearly with the number of CPUs, and therefore it becomes hard to get the needed throughput to keep the GPU,
 training the neural network,saturated during the learning steps.
 
 

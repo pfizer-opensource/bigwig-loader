@@ -84,3 +84,6 @@ exclude = "./tests/test_*.py"
 
 [tool.bandit.assert_used]
 skips = ["./tests/test_*.py"]
+
+[tool.codespell]
+ignore-words-list = " "
