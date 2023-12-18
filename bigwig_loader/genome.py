@@ -46,6 +46,8 @@ class Genome:
             sequence = self._get_sequence(chromosome, start, end)
             if not sequence:
                 continue
+            if len(sequence) != self.sequence_length:
+                continue
             if fraction_non_standard(sequence) > self.maximum_unknown_bases_fraction:
                 continue
             sequences.append(sequence)
