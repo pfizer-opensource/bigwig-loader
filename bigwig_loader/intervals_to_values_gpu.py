@@ -48,8 +48,70 @@ void intervals_to_values(
 }
 """
 
+_cuda_kernel_with_window = """
+extern "C" __global__
+void intervals_to_values(
+        const int* query_starts,
+        const int* query_ends,
+        const int* found_starts,
+        const int* found_ends,
+        const int* track_starts,
+        const int* track_ends,
+        const float* track_values,
+        const int batch_size,
+        const int sequence_length,
+        const int max_number_intervals,
+        const int window_size,
+        float* out
+) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if (i < batch_size) {
+        int found_start_index = found_starts[i];
+        int found_end_index = found_ends[i];
+        int query_start = query_starts[i];
+        int query_end = query_ends[i];
+
+        int cursor = found_start_index;
+        int window_index = 0;
+        float summation = 0.0f;
+
+        while (cursor < found_end_index) {
+            int window_start = window_index * window_size;
+            int window_end = window_start + window_size;
+
+            int interval_start = track_starts[cursor];
+            int interval_end = track_ends[cursor];
+
+            int start_index = max(interval_start - query_start, 0);
+            int end_index = min(interval_end, query_end) - query_start;
+
+            if (start_index >= window_end) {
+                window_index += 1;
+                continue;
+            }
+
+            int number = min(window_end, end_index) - max(window_start, start_index);
+
+            summation += number * track_values[cursor];
+
+            if (end_index < window_end) {
+                cursor += 1;
+            } else {
+                out[i * sequence_length / window_size + window_index] = summation / window_size;
+                summation = 0.0f;
+                window_index += 1;
+            }
+        }
+    }
+}
+"""
+
 cuda_kernel = cp.RawKernel(_cuda_kernel, "intervals_to_values")
 cuda_kernel.compile()
+
+cuda_kernel_with_window = cp.RawKernel(_cuda_kernel_with_window, "intervals_to_values")
+cuda_kernel_with_window.compile()
 
 
 def intervals_to_values(
@@ -129,9 +191,27 @@ def intervals_to_values(
             f"batch_size: {batch_size}\nmax_number_intervals: {max_number_intervals}\ngrid_size: {grid_size}\nblock_size: {block_size}"
         )
 
-        # cuda_kernel(
-        #     (grid_size,),
-        #     (block_size,),
+        cuda_kernel_with_window(
+            (grid_size,),
+            (block_size,),
+            (
+                query_starts,
+                query_ends,
+                found_starts,
+                found_ends,
+                track_starts,
+                track_ends,
+                track_values,
+                batch_size,
+                sequence_length,
+                max_number_intervals,
+                window_size,
+                out,
+            ),
+        )
+        # out = kernel_in_python(
+        #     grid_size,
+        #     block_size,
         #     (
         #         query_starts,
         #         query_ends,
@@ -144,26 +224,9 @@ def intervals_to_values(
         #         sequence_length,
         #         max_number_intervals,
         #         out,
+        #         window_size,
         #     ),
         # )
-        out = kernel_in_python(
-            grid_size,
-            block_size,
-            (
-                query_starts,
-                query_ends,
-                found_starts,
-                found_ends,
-                track_starts,
-                track_ends,
-                track_values,
-                batch_size,
-                sequence_length,
-                max_number_intervals,
-                out,
-                window_size,
-            ),
-        )
         return out
 
 

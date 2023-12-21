@@ -146,7 +146,7 @@ def test_get_values_from_intervals_window() -> None:
     track_values = cp.asarray([20.0, 15.0, 30.0, 40.0, 50.0], dtype=cp.dtype("f4"))
     query_starts = cp.asarray([2], dtype=cp.int32)
     query_ends = cp.asarray([17], dtype=cp.int32)
-    reserved = cp.zeros((1, 15), dtype=cp.float32)
+    reserved = cp.zeros((1, 3), dtype=cp.float32)
     values = intervals_to_values(
         track_starts,
         track_ends,
