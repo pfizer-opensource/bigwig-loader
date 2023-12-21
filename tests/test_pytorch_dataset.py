@@ -23,7 +23,7 @@ def pytorch_dataset(bigwig_path, reference_genome_path, merged_intervals):
 
 def test_pytorch_dataset(pytorch_dataset):
     for sequence, target in pytorch_dataset:
-        assert target.shape == (256, 5, 1000)
+        assert target.shape == (256, 2, 1000)
 
 
 def test_input_and_target_is_torch_tensor(pytorch_dataset):

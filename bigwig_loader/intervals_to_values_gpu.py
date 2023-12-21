@@ -2,6 +2,8 @@ import logging
 
 import cupy as cp
 
+ROUTE_KERNELS = True
+
 _zero = cp.asarray(0.0, dtype=cp.float32).item()
 
 _cuda_kernel = """
@@ -138,7 +140,7 @@ def intervals_to_values(
     )
     batch_size = query_starts.shape[0]
 
-    if False:  # window_size == 1:
+    if ROUTE_KERNELS and window_size == 1:
         n_threads_needed = batch_size * max_number_intervals
         grid_size, block_size = get_grid_and_block_size(n_threads_needed)
 
@@ -146,26 +148,9 @@ def intervals_to_values(
             f"batch_size: {batch_size}\nmax_number_intervals: {max_number_intervals}\ngrid_size: {grid_size}\nblock_size: {block_size}"
         )
 
-        # cuda_kernel(
-        #     (grid_size,),
-        #     (block_size,),
-        #     (
-        #         query_starts,
-        #         query_ends,
-        #         found_starts,
-        #         found_ends,
-        #         track_starts,
-        #         track_ends,
-        #         track_values,
-        #         batch_size,
-        #         sequence_length,
-        #         max_number_intervals,
-        #         out,
-        #     ),
-        # )
-        out = kernel_in_python(
-            grid_size,
-            block_size,
+        cuda_kernel(
+            (grid_size,),
+            (block_size,),
             (
                 query_starts,
                 query_ends,
@@ -178,9 +163,26 @@ def intervals_to_values(
                 sequence_length,
                 max_number_intervals,
                 out,
-                window_size,
             ),
         )
+        # out = kernel_in_python(
+        #     grid_size,
+        #     block_size,
+        #     (
+        #         query_starts,
+        #         query_ends,
+        #         found_starts,
+        #         found_ends,
+        #         track_starts,
+        #         track_ends,
+        #         track_values,
+        #         batch_size,
+        #         sequence_length,
+        #         max_number_intervals,
+        #         out,
+        #         window_size,
+        #     ),
+        # )
         return out
 
     else:
