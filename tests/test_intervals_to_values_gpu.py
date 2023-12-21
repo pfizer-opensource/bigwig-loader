@@ -32,6 +32,10 @@ def test_get_values_from_intervals_edge_case_1() -> None:
         track_starts, track_ends, track_values, query_starts, query_ends, reserved
     )
     expected = cp.asarray([[0, 0, 0, 0, 30, 30, 40, 40, 40, 40, 50, 50]])
+
+    print(expected)
+    print(values)
+
     assert (values == expected).all() and expected.shape[-1] == query_ends[
         0
     ] - query_starts[0]
@@ -83,6 +87,10 @@ def test_get_values_from_intervals_edge_case_4() -> None:
         track_starts, track_ends, track_values, query_starts, query_ends, reserved
     )
     expected = cp.asarray([[20, 30, 30, 40, 40]])
+
+    print(expected)
+    print(values)
+
     assert (values == expected).all() and expected.shape[-1] == query_ends[
         0
     ] - query_starts[0]
@@ -100,6 +108,10 @@ def test_get_values_from_intervals_edge_case_5() -> None:
         track_starts, track_ends, track_values, query_starts, query_ends, reserved
     )
     expected = cp.asarray([[20, 30, 30, 40, 40, 0, 0, 0, 0, 50, 50]])
+
+    print(expected)
+    print(values)
+
     assert (values == expected).all() and expected.shape[-1] == query_ends[
         0
     ] - query_starts[0]
@@ -122,6 +134,31 @@ def test_get_values_from_intervals_batch_of_2() -> None:
             [20.0, 30.0, 30.0, 40.0, 40.0, 0.0, 0.0, 0.0, 0.0, 50.0, 50.0],
         ]
     )
+    print(expected)
+    print(values)
+    assert (values == expected).all()
+
+
+def test_get_values_from_intervals_window() -> None:
+    """."""
+    track_starts = cp.asarray([1, 3, 10, 12, 16], dtype=cp.int32)
+    track_ends = cp.asarray([3, 10, 12, 16, 20], dtype=cp.int32)
+    track_values = cp.asarray([20.0, 15.0, 30.0, 40.0, 50.0], dtype=cp.dtype("f4"))
+    query_starts = cp.asarray([2], dtype=cp.int32)
+    query_ends = cp.asarray([17], dtype=cp.int32)
+    reserved = cp.zeros((1, 15), dtype=cp.float32)
+    values = intervals_to_values(
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        reserved,
+        window_size=5,
+    )
+
+    expected = cp.asarray([[16.0, 21.0, 42.0]])
+
     print(expected)
     print(values)
     assert (values == expected).all()
