@@ -78,7 +78,9 @@ void intervals_to_values(
         int window_index = 0;
         float summation = 0.0f;
 
-        while (cursor < found_end_index) {
+        int reduced_dim = sequence_length / window_size;
+
+        while (cursor < found_end_index && window_index < reduced_dim) {
             int window_start = window_index * window_size;
             int window_end = window_start + window_size;
 
@@ -97,12 +99,14 @@ void intervals_to_values(
 
             summation += number * track_values[cursor];
 
-            if (end_index < window_end) {
-                cursor += 1;
-            } else {
-                out[i * sequence_length / window_size + window_index] = summation / window_size;
+            if (end_index >= window_end || cursor + 1 >= found_end_index) {
+                out[i * reduced_dim + window_index] = summation / window_size;
                 summation = 0.0f;
                 window_index += 1;
+            }
+
+            if (end_index < window_end) {
+                cursor += 1;
             }
         }
     }
@@ -305,7 +309,7 @@ def kernel_in_python(
             window_index = 0
             summation = 0
 
-            while cursor < found_end_index:
+            while cursor < found_end_index and window_index < reduced_dim:
                 window_start = window_index * window_size
                 window_end = window_start + window_size
 
@@ -322,15 +326,25 @@ def kernel_in_python(
                 number = min(window_end, end_index) - max(window_start, start_index)
 
                 summation += number * track_values[cursor]
+                print("-----")
+                print("window_index", "number", "summation")
+                print(window_index, number, summation)
+                print("interval_start", "interval_end", "value")
+                print(interval_start, interval_end, track_values[cursor])
 
-                # keep adding to summation until we reach the end of the window
-                if end_index < window_end:
-                    cursor += 1
+                print("end_index", "window_end")
+                print(end_index, window_end)
+
                 # calculate average, reset summation and move to next window
-                else:
+                if end_index >= window_end or cursor + 1 >= found_end_index:
+                    print("calculate average, reset summation and move to next window")
                     out[i * reduced_dim + window_index] = summation / window_size
                     summation = 0
                     window_index += 1
+                # move cursor
+                if end_index < window_end:
+                    print("move cursor")
+                    cursor += 1
 
     out = cp.reshape(cp.asarray(out), (batch_size, reduced_dim))
     return out

@@ -45,7 +45,7 @@ def run_all_benchmarks(bigwig_path=config.bigwig_dir):
     print("Loading from:", config.bigwig_dir)
     bigwig_loader_collection = BigWigCollection(bigwig_path, first_n_files=None)
     chromosomes, starts, ends = some_intervals()
-    batch_sizes = [1, 2, 4, 8, 16, 32, 64] + [128 * i for i in range(1, 48)]
+    batch_sizes = [1, 2, 64, 128] + [256 * i for i in range(1, 6)]
 
     print("routing to different cupy kernels:")
     run_benchmark(bigwig_loader_collection, batch_sizes, chromosomes, starts, ends)
