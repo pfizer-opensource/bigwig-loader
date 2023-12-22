@@ -105,7 +105,7 @@ class BigWigCollection:
             )
 
         if out is None:
-            sequence_length = end[0] - start[0]
+            sequence_length = (end[0] - start[0]) // window_size
             out = self._get_out_tensor(len(start), sequence_length)
 
         abs_start = self.make_positions_global(chromosomes, start)

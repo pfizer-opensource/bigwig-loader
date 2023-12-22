@@ -288,7 +288,7 @@ class BigWigSuperDataset:
                 (
                     len(self.bigwig_collection),
                     self.batch_size,
-                    self.center_bin_to_predict,
+                    self.center_bin_to_predict // self.window_size,
                 ),
                 dtype=cp.float32,
             )
