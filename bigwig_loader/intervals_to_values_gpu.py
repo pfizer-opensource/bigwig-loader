@@ -169,24 +169,7 @@ def intervals_to_values(
                 out,
             ),
         )
-        # out = kernel_in_python(
-        #     grid_size,
-        #     block_size,
-        #     (
-        #         query_starts,
-        #         query_ends,
-        #         found_starts,
-        #         found_ends,
-        #         track_starts,
-        #         track_ends,
-        #         track_values,
-        #         batch_size,
-        #         sequence_length,
-        #         max_number_intervals,
-        #         out,
-        #         window_size,
-        #     ),
-        # )
+
         return out
 
     else:
@@ -215,24 +198,7 @@ def intervals_to_values(
                 out,
             ),
         )
-        # out = kernel_in_python(
-        #     grid_size,
-        #     block_size,
-        #     (
-        #         query_starts,
-        #         query_ends,
-        #         found_starts,
-        #         found_ends,
-        #         track_starts,
-        #         track_ends,
-        #         track_values,
-        #         batch_size,
-        #         sequence_length,
-        #         max_number_intervals,
-        #         out,
-        #         window_size,
-        #     ),
-        # )
+
         return out
 
 
@@ -245,7 +211,7 @@ def get_grid_and_block_size(n_threads: int) -> tuple[int, int]:
     return n_blocks_needed, threads_per_block
 
 
-def kernel_in_python(
+def kernel_in_python_with_window(
     grid_size: int,
     block_size: int,
     args: tuple[
@@ -263,7 +229,7 @@ def kernel_in_python(
         int,
     ],
 ) -> cp.ndarray:
-    """Equivalent in python to cuda_kernel. Just for debugging."""
+    """Equivalent in python to cuda_kernel_with_window. Just for debugging."""
 
     (
         query_starts,
@@ -350,7 +316,7 @@ def kernel_in_python(
     return out
 
 
-def kernel_in_python_old(
+def kernel_in_python(
     grid_size: int,
     block_size: int,
     args: tuple[
