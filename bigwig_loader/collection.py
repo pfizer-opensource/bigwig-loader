@@ -93,13 +93,19 @@ class BigWigCollection:
         chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
         start: Union[Sequence[int], npt.NDArray[np.int64]],
         end: Union[Sequence[int], npt.NDArray[np.int64]],
+        window_size: int = 1,
         out: Optional[cp.ndarray] = None,
     ) -> cp.ndarray:
         memory_bank = self._get_memory_bank()
         memory_bank.reset()
 
+        if (end[0] - start[0]) % window_size:
+            raise ValueError(
+                f"Sequence length {end[0] - start[0]} is not divisible by window size {window_size}"
+            )
+
         if out is None:
-            sequence_length = end[0] - start[0]
+            sequence_length = (end[0] - start[0]) // window_size
             out = self._get_out_tensor(len(start), sequence_length)
 
         abs_start = self.make_positions_global(chromosomes, start)
@@ -142,6 +148,7 @@ class BigWigCollection:
                 track_values=value[row_number_start:row_number_end],
                 query_starts=cp.asarray(abs_start, dtype=cp.uint32),
                 query_ends=cp.asarray(abs_end, dtype=cp.uint32),
+                window_size=window_size,
                 out=partial_out,
             )
             i = bigwig_end

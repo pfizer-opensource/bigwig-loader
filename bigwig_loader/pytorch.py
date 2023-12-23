@@ -77,6 +77,7 @@ class PytorchBigWigDataset(
             reference_genome_path=reference_genome_path,
             sequence_length=sequence_length,
             center_bin_to_predict=center_bin_to_predict,
+            window_size=window_size,
             batch_size=batch_size,
             super_batch_size=super_batch_size,
             batches_per_epoch=batches_per_epoch,
@@ -88,12 +89,6 @@ class PytorchBigWigDataset(
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,
         )
-        if window_size and window_size > 1:
-            self.average_pool_target: Optional[torch.nn.AvgPool1d] = torch.nn.AvgPool1d(
-                kernel_size=window_size, stride=window_size
-            )
-        else:
-            self.average_pool_target = None
 
     def __iter__(self) -> Iterator[tuple[torch.FloatTensor, torch.FloatTensor]]:
         iter(self._dataset)
@@ -103,6 +98,4 @@ class PytorchBigWigDataset(
         sequences, target = next(self._dataset)
         target = torch.as_tensor(target, device="cuda")
         sequences = torch.FloatTensor(sequences)
-        if self.average_pool_target:
-            target = self.average_pool_target(target)
         return sequences, target

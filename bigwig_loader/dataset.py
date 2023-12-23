@@ -33,6 +33,7 @@ class BigWigDataset:
         center_bin_to_predict: if given, only do prediction on a central window. Should be
             smaller than or equal to sequence_length. If not given will be the same as
             sequence_length.
+        window_size: used to down sample the resolution of the target from sequence_length
         batch_size: batch size
         super_batch_size: batch size that is used in the background to load data from
             bigwig files. Should be larger than batch_size. If None, it will be equal to
@@ -61,6 +62,7 @@ class BigWigDataset:
         reference_genome_path: Path,
         sequence_length: int = 1000,
         center_bin_to_predict: Optional[int] = None,
+        window_size: int = 1,
         batch_size: int = 256,
         super_batch_size: Optional[int] = None,
         batches_per_epoch: Optional[int] = None,
@@ -97,6 +99,7 @@ class BigWigDataset:
             reference_genome_path=reference_genome_path,
             sequence_length=sequence_length,
             center_bin_to_predict=center_bin_to_predict,
+            window_size=window_size,
             batch_size=super_batch_size,
             batches_per_epoch=super_batches_per_epoch,
             maximum_unknown_bases_fraction=maximum_unknown_bases_fraction,
@@ -159,6 +162,7 @@ class BigWigSuperDataset:
         center_bin_to_predict: if given, only do prediction on a central window. Should be
             smaller than or equal to sequence_length. If not given will be the same as
             sequence_length.
+        window_size: used to down sample the resolution of the target from sequence_length
         batch_size: batch size
         batches_per_epoch: because the length of an epoch is slightly arbitrary here,
             the number of batches can be set by hand. If not the number of batches per
@@ -184,6 +188,7 @@ class BigWigSuperDataset:
         reference_genome_path: Path,
         sequence_length: int = 1000,
         center_bin_to_predict: Optional[int] = None,
+        window_size: int = 1,
         batch_size: int = 256,
         batches_per_epoch: Optional[int] = None,
         maximum_unknown_bases_fraction: float = 0.1,
@@ -213,6 +218,7 @@ class BigWigSuperDataset:
             self.center_bin_to_predict = center_bin_to_predict
         else:
             self.center_bin_to_predict = sequence_length
+        self.window_size = window_size
         self.batch_size = batch_size
         self.batches_per_epoch = (
             batches_per_epoch
@@ -282,7 +288,7 @@ class BigWigSuperDataset:
                 (
                     len(self.bigwig_collection),
                     self.batch_size,
-                    self.center_bin_to_predict,
+                    self.center_bin_to_predict // self.window_size,
                 ),
                 dtype=cp.float32,
             )
@@ -303,6 +309,7 @@ class BigWigSuperDataset:
                 chromosomes,
                 start,
                 end,
+                window_size=self.window_size,
                 out=self._out,
             )
             return sequences, target
