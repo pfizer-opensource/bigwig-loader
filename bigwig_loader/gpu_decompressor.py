@@ -33,7 +33,7 @@ class Decoder:
         self.max_rows_per_chunk = max_rows_per_chunk
 
         self.uncomp_chunks: list[cp.ndarray] = []
-        self.uncomp_chunk_ptrs: cp.ndarray = None  # cp.array([], dtype=cp.uint64)
+        self.uncomp_chunk_ptrs: cp.ndarray = None
         self.uncomp_chunk_sizes: cp.ndarray = None
         self.actual_uncomp_chunk_sizes: cp.ndarray = None
         self.statuses: cp.ndarray = None
