@@ -58,7 +58,7 @@ class BigWigCollection:
         self.pinned_memory_size = pinned_memory_size
         self._memory_bank: Optional[MemoryBank] = None
         self._decoder = Decoder(
-            max_num_chunks=10000 * 100,  # 512 * len(self.bigwigs) * 10,
+            max_num_chunks=0,
             max_rows_per_chunk=max_rows_per_chunk,
             max_uncompressed_chunk_size=max_rows_per_chunk * 12 + 24,
             chromosome_offsets=self.local_chrom_ids_to_offset_matrix,
@@ -132,6 +132,13 @@ class BigWigCollection:
         gpu_byte_array, comp_chunks, compressed_chunk_sizes = memory_bank.to_gpu()
         _, start, end, value, n_rows_for_chunks = self._decoder.decode(
             gpu_byte_array, comp_chunks, compressed_chunk_sizes, bigwig_ids=bigwig_ids
+        )
+
+        logging.debug(
+            f"decompressed array sizes {len(start), len(end), len(value), len(n_rows_for_chunks), len(bigwig_ids)}"
+        )
+        logging.debug(
+            f"Cupy default memory pool:{ cp.get_default_memory_pool().used_bytes() / 1024} kB"
         )
 
         chunk_row_numbers = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
