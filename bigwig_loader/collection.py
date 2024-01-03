@@ -58,7 +58,6 @@ class BigWigCollection:
         self.pinned_memory_size = pinned_memory_size
         self._memory_bank: Optional[MemoryBank] = None
         self._decoder = Decoder(
-            max_num_chunks=0,
             max_rows_per_chunk=max_rows_per_chunk,
             max_uncompressed_chunk_size=max_rows_per_chunk * 12 + 24,
             chromosome_offsets=self.local_chrom_ids_to_offset_matrix,

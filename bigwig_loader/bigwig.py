@@ -163,7 +163,6 @@ class BigWig:
             memory_bank = MemoryBank(elastic=True)
         if decoder is None:
             decoder = Decoder(
-                max_num_chunks=0,  # the decoder can elastically increase
                 max_rows_per_chunk=self.max_rows_per_chunk,
                 max_uncompressed_chunk_size=self.max_rows_per_chunk * 12 + 24,
                 chromosome_offsets=None,

@@ -21,14 +21,13 @@ class Decoder:
 
     def __init__(
         self,
-        max_num_chunks: int,
         max_rows_per_chunk: int,
         max_uncompressed_chunk_size: int = (2048 * 12),
         chromosome_offsets: Optional[
             Union[Sequence[int], npt.NDArray[np.int64]]
         ] = None,
     ):
-        self.max_num_chunks = max_num_chunks
+        self.max_num_chunks = 0
         self.max_uncompressed_chunk_size = max_uncompressed_chunk_size
         self.max_rows_per_chunk = max_rows_per_chunk
 
@@ -37,8 +36,6 @@ class Decoder:
         self.uncomp_chunk_sizes: cp.ndarray = None
         self.actual_uncomp_chunk_sizes: cp.ndarray = None
         self.statuses: cp.ndarray = None
-
-        self.reserve_memory(max_num_chunks)
 
         self.range_of_indexes = cp.arange(max_rows_per_chunk)
         if chromosome_offsets is not None:
