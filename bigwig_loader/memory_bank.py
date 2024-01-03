@@ -58,9 +58,6 @@ class MemoryBank:
             offset: byte offset to start of compressed chunk
             size: byte size of compressed chunk
             skip_bytes: skips this number of bytes from offset
-            increase_memory_size: whether to elastically increase the
-                size of the pinned memory if the new chunk doesn't
-                fit in anymore. (default: True)
         Returns:
 
         """

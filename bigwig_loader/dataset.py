@@ -49,7 +49,7 @@ class BigWigDataset:
         first_n_files: Only use the first n files (handy for debugging on less tasks)
         position_sampler_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
-        repeat_same_positions: if False the positions sampler does not draw a new random collection
+        repeat_same_positions: if True the positions sampler does not draw a new random collection
             of positions when the buffer runs out, but repeats the same samples. Can be used to
             check whether network can overfit.
 
@@ -175,7 +175,7 @@ class BigWigSuperDataset:
         first_n_files: Only use the first n files (handy for debugging on less tasks)
         position_sampler_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
-        repeat_same_positions: if False the positions sampler does not draw a new random collection
+        repeat_same_positions: if True the positions sampler does not draw a new random collection
             of positions when the buffer runs out, but repeats the same samples. Can be used to
             check whether network can overfit.
 

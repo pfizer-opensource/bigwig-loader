@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from typing import Sequence
 from typing import Union
@@ -6,7 +7,6 @@ import cupy as cp
 import numcodecs
 import numpy as np
 import numpy.typing as npt
-from numcodecs.compat import ensure_contiguous_ndarray_like
 
 codec = numcodecs.registry.get_codec(
     {
@@ -21,34 +21,52 @@ class Decoder:
 
     def __init__(
         self,
-        max_num_chunks: int,
         max_rows_per_chunk: int,
         max_uncompressed_chunk_size: int = (2048 * 12),
         chromosome_offsets: Optional[
             Union[Sequence[int], npt.NDArray[np.int64]]
         ] = None,
     ):
+        self.max_num_chunks = 0
         self.max_uncompressed_chunk_size = max_uncompressed_chunk_size
-
-        self.uncomp_chunks = [
-            cp.empty(max_uncompressed_chunk_size, dtype=cp.uint8)
-            for _ in range(max_num_chunks)
-        ]
-        self.uncomp_chunk_ptrs = cp.array(
-            [c.data.ptr for c in self.uncomp_chunks], dtype=cp.uint64
-        )
-        self.uncomp_chunk_sizes = cp.array(
-            [max_uncompressed_chunk_size] * max_num_chunks, dtype=cp.uint64
-        )
-        self.actual_uncomp_chunk_sizes = cp.empty(max_num_chunks, dtype=cp.uint64)
-        self.statuses = cp.empty(max_num_chunks, dtype=cp.int32)
         self.max_rows_per_chunk = max_rows_per_chunk
+
+        self.uncomp_chunks: list[cp.ndarray] = []
+        self.uncomp_chunk_ptrs: cp.ndarray = None
+        self.uncomp_chunk_sizes: cp.ndarray = None
+        self.actual_uncomp_chunk_sizes: cp.ndarray = None
+        self.statuses: cp.ndarray = None
 
         self.range_of_indexes = cp.arange(max_rows_per_chunk)
         if chromosome_offsets is not None:
             self.chromosome_offsets = cp.asarray(chromosome_offsets, dtype="uint32")
         else:
             self.chromosome_offsets = None
+
+    def reserve_memory(self, num_chunks: int, generocity: float = 1.2) -> None:
+        """Create arrays to hold the uncompressed chunks."""
+
+        if num_chunks <= self.max_num_chunks:
+            return
+
+        num_chunks = int(num_chunks * generocity)
+
+        logging.debug(f"Reserving memory for {num_chunks} chunks")
+
+        self.uncomp_chunks = [
+            cp.empty(self.max_uncompressed_chunk_size, dtype=cp.uint8)
+            for _ in range(num_chunks)
+        ]
+        self.uncomp_chunk_ptrs = cp.array(
+            [c.data.ptr for c in self.uncomp_chunks], dtype=cp.uint64
+        )
+        self.uncomp_chunk_sizes = cp.array(
+            [self.max_uncompressed_chunk_size] * num_chunks, dtype=cp.uint64
+        )
+        self.actual_uncomp_chunk_sizes = cp.empty(num_chunks, dtype=cp.uint64)
+        self.statuses = cp.empty(num_chunks, dtype=cp.int32)
+
+        self.max_num_chunks = num_chunks
 
     def decode(
         self,
@@ -58,6 +76,8 @@ class Decoder:
         bigwig_ids: Optional[cp.ndarray] = None,
     ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
         num_chunks = len(comp_chunks)
+
+        self.reserve_memory(num_chunks)
 
         max_chunk_size = int(self.max_uncompressed_chunk_size)
 
