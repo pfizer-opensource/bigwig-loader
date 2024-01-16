@@ -115,6 +115,9 @@ class BigWigDataset:
         self._n = 0
         self._offset = 0
 
+    def reset_gpu(self) -> None:
+        self._super_dataset.reset_gpu()
+
     def __iter__(self) -> Iterator[tuple[Any, cp.ndarray]]:
         self._n = 0
         self._offset = 0
@@ -236,6 +239,9 @@ class BigWigSuperDataset:
         self._prepared_out: Optional[cp.ndarray] = None
         self._position_sampler_buffer_size = position_sampler_buffer_size
         self._repeat_same_positions = repeat_same_positions
+
+    def reset_gpu(self) -> None:
+        self.bigwig_collection.reset_gpu()
 
     @property
     def genome(self) -> Genome:

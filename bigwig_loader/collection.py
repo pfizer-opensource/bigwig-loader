@@ -54,14 +54,12 @@ class BigWigCollection:
             self.local_chrom_ids_to_offset_matrix,
         ) = self.create_global_position_system()
 
-        max_rows_per_chunk = max([bigwig.max_rows_per_chunk for bigwig in self.bigwigs])
+        self.max_rows_per_chunk = max(
+            [bigwig.max_rows_per_chunk for bigwig in self.bigwigs]
+        )
         self.pinned_memory_size = pinned_memory_size
         self._memory_bank: Optional[MemoryBank] = None
-        self._decoder = Decoder(
-            max_rows_per_chunk=max_rows_per_chunk,
-            max_uncompressed_chunk_size=max_rows_per_chunk * 12 + 24,
-            chromosome_offsets=self.local_chrom_ids_to_offset_matrix,
-        )
+        self._decoder: Optional[Decoder] = None
         self._out: cp.ndarray = cp.zeros((len(self), 1, 1), dtype=cp.float32)
 
         self.run_indexing()
@@ -74,6 +72,27 @@ class BigWigCollection:
 
     def __len__(self) -> int:
         return len(self.bigwigs)
+
+    def reset_gpu(self) -> None:
+        """
+        Remove all gpu arrays from the previously used device and recreate when necessary on
+        current device. This is useful when training is done on multiple gpus and the arrays
+        need to be recreated on the new gpu.
+        """
+
+        self._out = cp.zeros((len(self), 1, 1), dtype=cp.float32)
+        self._decoder = None
+        self._memory_bank = None
+
+    def _get_decoder(self) -> Decoder:
+        if self._decoder:
+            return self._decoder
+        self._decoder = Decoder(
+            max_rows_per_chunk=self.max_rows_per_chunk,
+            max_uncompressed_chunk_size=self.max_rows_per_chunk * 12 + 24,
+            chromosome_offsets=self.local_chrom_ids_to_offset_matrix,
+        )
+        return self._decoder
 
     def _get_memory_bank(self) -> MemoryBank:
         if self._memory_bank:
@@ -129,7 +148,8 @@ class BigWigCollection:
         # bring the gpu
         bigwig_ids = cp.asarray(bigwig_ids, dtype=cp.uint32)
         gpu_byte_array, comp_chunks, compressed_chunk_sizes = memory_bank.to_gpu()
-        _, start, end, value, n_rows_for_chunks = self._decoder.decode(
+        decoder = self._get_decoder()
+        _, start, end, value, n_rows_for_chunks = decoder.decode(
             gpu_byte_array, comp_chunks, compressed_chunk_sizes, bigwig_ids=bigwig_ids
         )
 
@@ -193,6 +213,7 @@ class BigWigCollection:
         merge_allow_gap: int = 0,
         batch_size: int = 4096,
     ) -> pd.DataFrame:
+        decoder = self._get_decoder()
         intervals = pd.concat(
             [
                 bw.intervals(
@@ -202,7 +223,7 @@ class BigWigCollection:
                     merge=merge,
                     merge_allow_gap=merge_allow_gap,
                     memory_bank=self._get_memory_bank(),
-                    decoder=self._decoder,
+                    decoder=decoder,
                     batch_size=batch_size,
                 )
                 for bw in self.bigwigs

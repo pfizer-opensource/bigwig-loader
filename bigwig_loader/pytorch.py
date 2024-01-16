@@ -99,3 +99,6 @@ class PytorchBigWigDataset(
         target = torch.as_tensor(target, device="cuda")
         sequences = torch.FloatTensor(sequences)
         return sequences, target
+
+    def reset_gpu(self) -> None:
+        self._dataset.reset_gpu()
