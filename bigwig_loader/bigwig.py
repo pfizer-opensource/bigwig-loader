@@ -391,7 +391,10 @@ class BigWig:
         """
 
         rows_for_chunks = []
-        sample_leaf_nodes = sample(self.rtree_leaf_nodes, sample_size)
+        if len(self.rtree_leaf_nodes) < sample_size:
+            sample_leaf_nodes = self.rtree_leaf_nodes
+        else:
+            sample_leaf_nodes = sample(self.rtree_leaf_nodes, sample_size)
         for leaf_node in sample_leaf_nodes:
             file_object.seek(leaf_node.data_offset, 0)  # type: ignore
             decoded = zlib.decompress(file_object.read(leaf_node.data_size))  # type: ignore

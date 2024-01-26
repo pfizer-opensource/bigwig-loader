@@ -1,5 +1,6 @@
 import logging
 import os
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 from typing import Iterable
@@ -54,14 +55,10 @@ class BigWigCollection:
             self.local_chrom_ids_to_offset_matrix,
         ) = self.create_global_position_system()
 
-        max_rows_per_chunk = max([bigwig.max_rows_per_chunk for bigwig in self.bigwigs])
-        self.pinned_memory_size = pinned_memory_size
-        self._memory_bank: Optional[MemoryBank] = None
-        self._decoder = Decoder(
-            max_rows_per_chunk=max_rows_per_chunk,
-            max_uncompressed_chunk_size=max_rows_per_chunk * 12 + 24,
-            chromosome_offsets=self.local_chrom_ids_to_offset_matrix,
+        self.max_rows_per_chunk = max(
+            [bigwig.max_rows_per_chunk for bigwig in self.bigwigs]
         )
+        self.pinned_memory_size = pinned_memory_size
         self._out: cp.ndarray = cp.zeros((len(self), 1, 1), dtype=cp.float32)
 
         self.run_indexing()
@@ -75,13 +72,39 @@ class BigWigCollection:
     def __len__(self) -> int:
         return len(self.bigwigs)
 
-    def _get_memory_bank(self) -> MemoryBank:
-        if self._memory_bank:
-            return self._memory_bank
-        self._memory_bank = MemoryBank(nbytes=self.pinned_memory_size, elastic=True)
-        return self._memory_bank
+    def reset_gpu(self) -> None:
+        """
+        Remove all gpu arrays from the previously used device and recreate when necessary on
+        current device. This is useful when training is done on multiple gpus and the arrays
+        need to be recreated on the new gpu.
+        """
+
+        self._out = cp.zeros((len(self), 1, 1), dtype=cp.float32)
+        del self.__dict__["decoder"]
+        del self.__dict__["memory_bank"]
+
+    @cached_property
+    def decoder(self) -> Decoder:
+        return Decoder(
+            max_rows_per_chunk=self.max_rows_per_chunk,
+            max_uncompressed_chunk_size=self.max_rows_per_chunk * 12 + 24,
+            chromosome_offsets=self.local_chrom_ids_to_offset_matrix,
+        )
+
+    @cached_property
+    def memory_bank(self) -> MemoryBank:
+        return MemoryBank(nbytes=self.pinned_memory_size, elastic=True)
 
     def _get_out_tensor(self, batch_size: int, sequence_length: int) -> cp.ndarray:
+        """Resuses a reserved tensor if possible (when out shape is constant),
+        otherwise creates a new one.
+        args:
+            batch_size: batch size
+            sequence_length: length of genomic sequence
+         returns:
+            tensor of shape (number of bigwig files, batch_size, sequence_length)
+        """
+
         shape = (len(self), batch_size, sequence_length)
         if self._out.shape != shape:
             self._out = cp.zeros(shape, dtype=cp.float32)
@@ -95,8 +118,7 @@ class BigWigCollection:
         window_size: int = 1,
         out: Optional[cp.ndarray] = None,
     ) -> cp.ndarray:
-        memory_bank = self._get_memory_bank()
-        memory_bank.reset()
+        self.memory_bank.reset()
 
         if (end[0] - start[0]) % window_size:
             raise ValueError(
@@ -119,7 +141,7 @@ class BigWigCollection:
             n_chunks_per_bigwig.append(len(offsets))
             bigwig_ids.extend([bigwig.id] * len(offsets))
             # read chunks into preallocated memory
-            memory_bank.add_many(
+            self.memory_bank.add_many(
                 bigwig.store._fh,
                 offsets,
                 sizes,
@@ -128,8 +150,8 @@ class BigWigCollection:
 
         # bring the gpu
         bigwig_ids = cp.asarray(bigwig_ids, dtype=cp.uint32)
-        gpu_byte_array, comp_chunks, compressed_chunk_sizes = memory_bank.to_gpu()
-        _, start, end, value, n_rows_for_chunks = self._decoder.decode(
+        gpu_byte_array, comp_chunks, compressed_chunk_sizes = self.memory_bank.to_gpu()
+        _, start, end, value, n_rows_for_chunks = self.decoder.decode(
             gpu_byte_array, comp_chunks, compressed_chunk_sizes, bigwig_ids=bigwig_ids
         )
 
@@ -201,8 +223,8 @@ class BigWigCollection:
                     threshold=threshold,
                     merge=merge,
                     merge_allow_gap=merge_allow_gap,
-                    memory_bank=self._get_memory_bank(),
-                    decoder=self._decoder,
+                    memory_bank=self.memory_bank,
+                    decoder=self.decoder,
                     batch_size=batch_size,
                 )
                 for bw in self.bigwigs
