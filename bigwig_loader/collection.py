@@ -80,8 +80,10 @@ class BigWigCollection:
         """
 
         self._out = cp.zeros((len(self), 1, 1), dtype=cp.float32)
-        del self.__dict__["decoder"]
-        del self.__dict__["memory_bank"]
+        if "decoder" in self.__dict__:
+            del self.__dict__["decoder"]
+        if "memory_bank" in self.__dict__:
+            del self.__dict__["memory_bank"]
 
     @cached_property
     def decoder(self) -> Decoder:
