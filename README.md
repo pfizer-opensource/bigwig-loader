@@ -81,3 +81,22 @@ anything is unclear, please open an issue.
 If you use this library, consider citing:
 
 Retel, Joren Sebastian, Andreas Poehlmann, Josh Chiou, Andreas Steffen, and Djork-Arné Clevert. “A Fast Machine Learning Dataloader for Epigenetic Tracks from BigWig Files.” Bioinformatics 40, no. 1 (January 1, 2024): btad767. https://doi.org/10.1093/bioinformatics/btad767.
+
+```bibtex
+@article{
+    retel_fast_2024,
+    title = {A fast machine learning dataloader for epigenetic tracks from {BigWig} files},
+    volume = {40},
+    issn = {1367-4811},
+    url = {https://doi.org/10.1093/bioinformatics/btad767},
+    doi = {10.1093/bioinformatics/btad767},
+    abstract = {We created bigwig-loader, a data-loader for epigenetic profiles from BigWig files that decompresses and processes information for multiple intervals from multiple BigWig files in parallel. This is an access pattern needed to create training batches for typical machine learning models on epigenetics data. Using a new codec, the decompression can be done on a graphical processing unit (GPU) making it fast enough to create the training batches during training, mitigating the need for saving preprocessed training examples to disk.The bigwig-loader installation instructions and source code can be accessed at https://github.com/pfizer-opensource/bigwig-loader},
+    number = {1},
+    urldate = {2024-02-02},
+    journal = {Bioinformatics},
+    author = {Retel, Joren Sebastian and Poehlmann, Andreas and Chiou, Josh and Steffen, Andreas and Clevert, Djork-Arné},
+    month = jan,
+    year = {2024},
+    pages = {btad767},
+}
+```
