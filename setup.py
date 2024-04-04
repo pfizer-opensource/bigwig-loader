@@ -15,6 +15,14 @@ setup(
                 ],
                 library_dirs=[],
             ),
+            Extension(
+                "bigwig_loader.subtract_intervals",
+                sources=["bigwig_loader/subtract_intervals.pyx"],
+                include_dirs=[
+                    numpy.get_include(),
+                ],
+                library_dirs=[],
+            ),
         ],
         annotate=True,
     ),
