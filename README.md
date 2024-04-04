@@ -74,3 +74,10 @@ anything is unclear, please open an issue.
 3. create the conda environment" `conda env create -f environment.yml`
 4. `pip install -e '.[dev]'`
 5. run `pre-commit install` to install the pre-commit hooks
+
+
+## Citing
+
+If you use this library
+
+Retel, Joren Sebastian, Andreas Poehlmann, Josh Chiou, Andreas Steffen, and Djork-Arné Clevert. “A Fast Machine Learning Dataloader for Epigenetic Tracks from BigWig Files.” Bioinformatics 40, no. 1 (January 1, 2024): btad767. https://doi.org/10.1093/bioinformatics/btad767.
