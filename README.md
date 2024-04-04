@@ -78,6 +78,6 @@ anything is unclear, please open an issue.
 
 ## Citing
 
-If you use this library
+If you use this library, consider citing:
 
 Retel, Joren Sebastian, Andreas Poehlmann, Josh Chiou, Andreas Steffen, and Djork-Arné Clevert. “A Fast Machine Learning Dataloader for Epigenetic Tracks from BigWig Files.” Bioinformatics 40, no. 1 (January 1, 2024): btad767. https://doi.org/10.1093/bioinformatics/btad767.
