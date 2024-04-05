@@ -154,17 +154,17 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
             interval_end = end_view[i]
             interval_value = value_view[i]
             increment_interval = False
-            continue
+
         if increment_blacklist:
             j += 1
-            blacklist_chrom_id = chrom_id_view_blacklist[j]
-            blacklist_start = start_view_blacklist[j]
-            blacklist_end = end_view_blacklist[j]
-            increment_blacklist = False
-            continue
+            if j < n_blacklist:
+                blacklist_chrom_id = chrom_id_view_blacklist[j]
+                blacklist_start = start_view_blacklist[j]
+                blacklist_end = end_view_blacklist[j]
+                increment_blacklist = False
 
-        if interval_end < blacklist_start or j >= n_blacklist:
-            print("this happens")
+        if smaller(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_start) or j >= n_blacklist:
+
             chrom_id_out_view[k] = interval_chrom_id
             start_out_view[k] = interval_start
             end_out_view[k] = interval_end
@@ -173,14 +173,17 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
             #result.append(intervals[i])
             increment_interval = True
 
-        elif interval_start > blacklist_end:
+        #elif interval_start > blacklist_end:
+        elif larger(interval_chrom_id,  interval_start, blacklist_chrom_id, blacklist_end):
             increment_blacklist = True
 
         # interval is completely blacklisted
-        elif interval_start >= blacklist_start and interval_end <= blacklist_end:
+        #elif interval_start >= blacklist_start and interval_end <= blacklist_end:
+        elif larger_equal(interval_chrom_id, interval_start, blacklist_chrom_id, blacklist_start) and smaller_equal(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_end):
             increment_interval = True
 
-        elif interval_start < blacklist_start and interval_end <= blacklist_end:
+        #elif interval_start < blacklist_start and interval_end <= blacklist_end:
+        elif smaller(interval_chrom_id, interval_start, blacklist_chrom_id, blacklist_start) and smaller_equal(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_end):
             chrom_id_out_view[k] = interval_chrom_id
             start_out_view[k] = interval_start
             end_out_view[k] = blacklist_start
@@ -192,7 +195,8 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
             # result.append((interval_start, blacklist_start))
             # intervals[i] = (blacklist_end, interval_end)
         #
-        elif interval_start < blacklist_start and interval_end > blacklist_end:
+        # elif interval_start < blacklist_start and interval_end > blacklist_end:
+        elif smaller(interval_chrom_id, interval_start, blacklist_chrom_id, blacklist_start) and larger(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_end):
             chrom_id_out_view[k] = interval_chrom_id
             start_out_view[k] = interval_start
             end_out_view[k] = blacklist_start
@@ -201,10 +205,12 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
             increment_blacklist = True
             interval_start = blacklist_end
 
-        elif interval_start >= blacklist_start and interval_end > blacklist_end:
+        #elif interval_start >= blacklist_start and interval_end > blacklist_end:
+        elif larger_equal(interval_chrom_id, interval_start, blacklist_chrom_id, blacklist_start) and larger(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_end):
             interval_start = blacklist_end
             #intervals[i] = (blacklist_end, interval_end)
-        elif interval_start < blacklist_start and interval_end > blacklist_end:
+        #elif interval_start < blacklist_start and interval_end > blacklist_end:
+        elif smaller(interval_chrom_id, interval_start, blacklist_chrom_id, blacklist_start) and larger(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_end):
             chrom_id_out_view[k] = interval_chrom_id
             start_out_view[k] = interval_start
             end_out_view[k] = blacklist_start
@@ -215,3 +221,25 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
             increment_blacklist = True
 
     return chrom_id_out[:k], start_out[:k], end_out[:k], value_out[:k]
+
+cdef bint smaller(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2):
+    if chrom1 < chrom2:
+        return True
+    elif chrom1 == chrom2:
+        return pos1 < pos2
+    else:
+        return False
+
+cdef bint larger(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2):
+    if chrom1 > chrom2:
+        return True
+    elif chrom1 == chrom2:
+        return pos1 > pos2
+    else:
+        return False
+
+cdef bint smaller_equal(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2):
+    return not larger(chrom1, pos1, chrom2, pos2)
+
+cdef bint larger_equal(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2):
+    return not smaller(chrom1, pos1, chrom2, pos2)
