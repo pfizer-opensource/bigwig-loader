@@ -4,6 +4,29 @@ import pandas as pd
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 
 
+def test_subtract_intervals_no_overlap():
+    chrom = np.array(["chr2"])
+    start = np.array([4], np.dtype("uint32"))
+    end = np.array([20], np.dtype("uint32"))
+    value = np.array([1.0], np.dtype("f4"))
+
+    df1 = pd.DataFrame({"chrom": chrom, "start": start, "end": end, "value": value})
+
+    chrom = np.array(["chr2"])
+    start = np.array([100], np.dtype("uint32"))
+    end = np.array([200], np.dtype("uint32"))
+
+    df2 = pd.DataFrame({"chrom": chrom, "start": start, "end": end, "value": value})
+
+    result = subtract_interval_dataframe(intervals=df1, blacklist=df2)
+
+    print(result)
+
+    assert list(result["chrom"]) == ["chr2"]
+    assert list(result["start"]) == [4]
+    assert list(result["end"]) == [20]
+
+
 def test_subtract_intervals_dataframe():
     chrom = np.array(["chr2"])
     start = np.array([4], np.dtype("uint32"))
@@ -19,6 +42,8 @@ def test_subtract_intervals_dataframe():
     df2 = pd.DataFrame({"chrom": chrom, "start": start, "end": end, "value": value})
 
     result = subtract_interval_dataframe(intervals=df1, blacklist=df2)
+
+    print(result)
 
     assert list(result["chrom"]) == ["chr2"]
     assert list(result["start"]) == [4]

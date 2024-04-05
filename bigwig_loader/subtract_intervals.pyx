@@ -24,26 +24,20 @@ def subtract_interval_dataframe(intervals: pd.DataFrame, blacklist: pd.DataFrame
         intervals.
 
     """
-    intervals = intervals.copy(deep=False)
-    blacklist = blacklist.copy(deep=False)
-
-    intervals["blacklist"] = False
-    blacklist["blacklist"] = True
-    blacklist["value"] = np.array([0.0], np.dtype("f4"))
 
     if buffer:
         blacklist["start"] = (blacklist["start"] - buffer).clip(lower=0)
         blacklist["end"] = blacklist["end"] + buffer
 
-    combined = pd.concat([intervals, blacklist])
-
     chrom, start, end, value = subtract_intervals_with_chrom_keys(
-                                                                combined["chrom"].values,
-                                                                combined["start"].values,
-                                                                combined["end"].values,
-                                                                combined["value"].values,
-                                                                combined["blacklist"].values
-                                                               )
+                                                                intervals["chrom"].values,
+                                                                intervals["start"].values,
+                                                                intervals["end"].values,
+                                                                intervals["value"].values,
+                                                                blacklist["chrom"].values,
+                                                                blacklist["start"].values,
+                                                                blacklist["end"].values,
+    )
 
     return pd.DataFrame({"chrom": chrom, "start": start, "end": end, "value": value})
 
@@ -53,11 +47,15 @@ def subtract_intervals_with_chrom_keys(cnp.ndarray[object, ndim=1] chroms,
                                     cnp.ndarray[UINT32_t, ndim=1] starts,
                                     cnp.ndarray[UINT32_t, ndim=1] ends,
                                     cnp.ndarray[cnp.float32_t, ndim=1] values,
-                                    cnp.ndarray[UINT8_t, ndim=1] blacklist):
+                                    cnp.ndarray[object, ndim=1] chroms_blacklist,
+                                    cnp.ndarray[UINT32_t, ndim=1] starts_blacklist,
+                                    cnp.ndarray[UINT32_t, ndim=1] ends_blacklist):
     id_to_key = np.array(ID_TO_KEY_CANONICAL + natsorted(set(chroms) - CANONICAL_CHROM_KEYS), dtype=object)
+    print(id_to_key)
     key_to_id = {key: i for i, key in enumerate(id_to_key)}
     chrom_ids = np.array([key_to_id[key] for key in chroms], dtype="uint32")
-    chrom_ids_out, starts_out, ends_out, values_out = subtract_intervals(chrom_ids, starts, ends, values, blacklist)
+    chrom_ids_blacklist = np.array([key_to_id[key] for key in chroms_blacklist], dtype="uint32")
+    chrom_ids_out, starts_out, ends_out, values_out = subtract_intervals(chrom_ids, starts, ends, values, chrom_ids_blacklist, starts_blacklist, ends_blacklist)
     chroms_out = id_to_key[chrom_ids_out]
     return chroms_out, starts_out, ends_out, values_out
 
@@ -68,32 +66,41 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
                       cnp.ndarray[cnp.npy_uint32, ndim = 1] starts,
                       cnp.ndarray[cnp.npy_uint32, ndim = 1] ends,
                       cnp.ndarray[cnp.float32_t, ndim = 1] values,
-                      cnp.ndarray[cnp.uint8_t, ndim = 1] blacklist
+                      cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids_blacklist,
+                      cnp.ndarray[cnp.npy_uint32, ndim = 1] starts_blacklist,
+                      cnp.ndarray[cnp.npy_uint32, ndim = 1] ends_blacklist,
                       ):
     cdef:
         size_t i
         size_t j
+        size_t k
         size_t n_intervals
-        UINT32_t chrom_id
-        UINT32_t start
-        UINT32_t end
-        UINT8_t is_blacklist
-        float value
-        UINT32_t chrom_id_next
-        UINT32_t start_next
-        UINT32_t end_next
-        UINT8_t is_blacklist_next
-        UINT32_t first_allowed_start
+        size_t n_blacklist
+        UINT32_t interval_chrom_id
+        UINT32_t interval_start
+        UINT32_t interval_end
+        float interval_value
+        UINT32_t blacklist_chrom_id
+        UINT32_t blacklist_start
+        UINT32_t blacklist_end
+        # UINT32_t first_allowed_start
         float zero = 0.0
+        bint increment_interval
+        bint increment_blacklist
 
     n_intervals = starts.shape[0]
+    n_blacklist = starts_blacklist.shape[0]
 
     # cdef cnp.ndarray[cnp.int32_t, ndim = 1] idx = np.empty_like(chrom_ids, dtype="int32")
 
-    cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_id_out = np.empty_like(chrom_ids)
-    cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] start_out = np.empty_like(starts)
-    cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] end_out = np.empty_like(ends)
-    cdef cnp.ndarray[cnp.float32_t, ndim = 1] value_out = np.empty_like(values)
+    # cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_id_out = np.empty_like(chrom_ids)
+    # cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] start_out = np.empty_like(starts)
+    # cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] end_out = np.empty_like(ends)
+    # cdef cnp.ndarray[cnp.float32_t, ndim = 1] value_out = np.empty_like(values)
+    cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_id_out = np.empty(shape=(n_intervals + n_blacklist,), dtype=np.uint32)
+    cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] start_out = np.empty(shape=(n_intervals + n_blacklist,), dtype=np.uint32)
+    cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] end_out = np.empty(shape=(n_intervals + n_blacklist,), dtype=np.uint32)
+    cdef cnp.ndarray[cnp.float32_t, ndim = 1] value_out = np.empty(shape=(n_intervals + n_blacklist,), dtype=np.float32)
 
     cdef UINT32_t[:] chrom_id_out_view = chrom_id_out
     cdef UINT32_t[:] start_out_view = start_out
@@ -105,52 +112,106 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
     starts = starts[idx]
     ends = ends[idx]
     values = values[idx]
-    blacklist =  blacklist[idx]
 
-    i = 1
+    idx = np.lexsort([starts_blacklist, chrom_ids_blacklist])
+    chrom_ids_blacklist = chrom_ids_blacklist[idx]
+    starts_blacklist = starts_blacklist[idx]
+    ends_blacklist = ends_blacklist[idx]
+
+    i = 0
     j = 0
+    k = 0
 
     cdef UINT32_t[:] chrom_id_view = chrom_ids
     cdef UINT32_t[:] start_view = starts
     cdef UINT32_t[:] end_view = ends
     cdef float[:] value_view = values
 
-    first_allowed_start = starts[0]
+    cdef UINT32_t[:] chrom_id_view_blacklist = chrom_ids_blacklist
+    cdef UINT32_t[:] start_view_blacklist = starts_blacklist
+    cdef UINT32_t[:] end_view_blacklist = ends_blacklist
+
+    #Starting off with the first interval and blacklist
+    interval_chrom_id = chrom_id_view[i]
+    interval_start = start_view[i]
+    interval_end = end_view[i]
+    interval_value = value_view[i]
+    increment_interval = False
+
+    blacklist_chrom_id = chrom_id_view_blacklist[j]
+    blacklist_start = start_view_blacklist[j]
+    blacklist_end = end_view_blacklist[j]
+    increment_blacklist = False
+
     # value_new = zero
-    while i < n_intervals:
-        chrom_id = chrom_id_view[i - 1]
-        start = start_view[i - 1]
-        end = end_view[i - 1]
-        value = value_view[i - 1]
-        is_blacklist = blacklist[i - 1]
-
-        chrom_id_next = chrom_id_view[i]
-        start_next = start_view[i]
-        end_next = end_view[i]
-        is_blacklist_next = blacklist[i]
-
-        if is_blacklist:
-            first_allowed_start = end
+    while True:
+        if increment_interval:
+            if i + 1 == n_intervals:
+                break
             i += 1
+            interval_chrom_id = chrom_id_view[i]
+            interval_start = start_view[i]
+            interval_end = end_view[i]
+            interval_value = value_view[i]
+            increment_interval = False
             continue
-        if end <= first_allowed_start:
-            i += 1
-            continue
-        if start == start_next:
-            i += 1
+        if increment_blacklist:
+            j += 1
+            blacklist_chrom_id = chrom_id_view_blacklist[j]
+            blacklist_start = start_view_blacklist[j]
+            blacklist_end = end_view_blacklist[j]
+            increment_blacklist = False
             continue
 
-        first_allowed_start = max(first_allowed_start, start)
+        if interval_end < blacklist_start or j >= n_blacklist:
+            print("this happens")
+            chrom_id_out_view[k] = interval_chrom_id
+            start_out_view[k] = interval_start
+            end_out_view[k] = interval_end
+            value_out_view[k] = interval_value
+            k += 1
+            #result.append(intervals[i])
+            increment_interval = True
 
+        elif interval_start > blacklist_end:
+            increment_blacklist = True
 
-        chrom_id_out_view[j] = chrom_id
-        start_out_view[j] = first_allowed_start
-        value_out_view[j] = value
-        if is_blacklist_next and start_next < end and chrom_id == chrom_id_next:
-            end_out_view[j] = min(end, start_next)
-        else:
-            end_out_view[j] = end
-        j += 1
-        i += 1
+        # interval is completely blacklisted
+        elif interval_start >= blacklist_start and interval_end <= blacklist_end:
+            increment_interval = True
 
-    return chrom_id_out[:j], start_out[:j], end_out[:j], value_out[:j]
+        elif interval_start < blacklist_start and interval_end <= blacklist_end:
+            chrom_id_out_view[k] = interval_chrom_id
+            start_out_view[k] = interval_start
+            end_out_view[k] = blacklist_start
+            value_out_view[k] = interval_value
+            k += 1
+
+            interval_start = blacklist_end
+            # interval_end = interval_end
+            # result.append((interval_start, blacklist_start))
+            # intervals[i] = (blacklist_end, interval_end)
+        #
+        elif interval_start < blacklist_start and interval_end > blacklist_end:
+            chrom_id_out_view[k] = interval_chrom_id
+            start_out_view[k] = interval_start
+            end_out_view[k] = blacklist_start
+            value_out_view[k] = interval_value
+            k += 1
+            increment_blacklist = True
+            interval_start = blacklist_end
+
+        elif interval_start >= blacklist_start and interval_end > blacklist_end:
+            interval_start = blacklist_end
+            #intervals[i] = (blacklist_end, interval_end)
+        elif interval_start < blacklist_start and interval_end > blacklist_end:
+            chrom_id_out_view[k] = interval_chrom_id
+            start_out_view[k] = interval_start
+            end_out_view[k] = blacklist_start
+            value_out_view[k] = interval_value
+            k += 1
+            #result.append((interval_start, blacklist_start))
+            interval_start = blacklist_end
+            increment_blacklist = True
+
+    return chrom_id_out[:k], start_out[:k], end_out[:k], value_out[:k]
