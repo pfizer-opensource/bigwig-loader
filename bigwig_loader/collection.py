@@ -212,16 +212,44 @@ class BigWigCollection:
         self,
         include_chromosomes: Union[Literal["all", "standard"], Sequence[str]] = "all",
         exclude_chromosomes: Optional[Sequence[str]] = None,
+        blacklist_intervals: Optional[pd.DataFrame] = None,
+        blacklist_buffer: int = 0,
         merge: bool = False,
         threshold: float = 0.0,
         merge_allow_gap: int = 0,
         batch_size: int = 4096,
     ) -> pd.DataFrame:
+        """
+        Get Intervals from the collection of intervals. This function
+        in turn calls the intervals method of the BigWig class for each
+        BigWig file in the collection and concatenates, and if wanted merges,
+        the results.
+        Args:
+            include_chromosomes: list of chromosome, "standard" or "all" (default).
+            exclude_chromosomes: list of chromosomes you want to exclude
+            blacklist_intervals: pandas dataframe of intervals that you want to
+                exclude from the result.
+            blacklist_buffer: default 0. Buffer around blacklist intervals to
+                exclude.
+            threshold: only return intervals of which the value exceeds
+                this threshold.
+            merge: whether to merge intervals that are directly following
+                eachother. The value will be the max value of the merged
+                intervals.
+            merge_allow_gap: default 0. Allow intervals seperated by size
+                merge_allow_gap bases to still be merged.
+            batch_size: number of intervals processed at once.
+        Returns: pandas dataframe of intervals (chrom, start, end, value)
+
+        """
+
         intervals = pd.concat(
             [
                 bw.intervals(
                     include_chromosomes=include_chromosomes,
                     exclude_chromosomes=exclude_chromosomes,
+                    blacklist_intervals=blacklist_intervals,
+                    blacklist_buffer=blacklist_buffer,
                     threshold=threshold,
                     merge=merge,
                     merge_allow_gap=merge_allow_gap,

@@ -26,6 +26,7 @@ from bigwig_loader.parser import TotalSummary
 from bigwig_loader.parser import WIGSectionHeader
 from bigwig_loader.parser import ZoomHeader
 from bigwig_loader.store import BigWigStore
+from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import get_standard_chromosomes
 
 
@@ -137,6 +138,8 @@ class BigWig:
         self,
         include_chromosomes: Union[Literal["all", "standard"], Sequence[str]] = "all",
         exclude_chromosomes: Optional[Sequence[str]] = None,
+        blacklist_intervals: Optional[pd.DataFrame] = None,
+        blacklist_buffer: int = 0,
         threshold: Optional[float] = None,
         merge: bool = False,
         merge_allow_gap: int = 0,
@@ -145,10 +148,15 @@ class BigWig:
         batch_size: int = 4096,
     ) -> pd.DataFrame:
         """
-        Does not give back data in the chromosome order you asked for necessarily
+        Get Intervals from the bigwig file.Does not give back data in the
+        chromosome order you asked for necessarily.
         Args:
             include_chromosomes: list of chromosome, "standard" or "all" (default).
             exclude_chromosomes: list of chromosomes you want to exclude
+            blacklist_intervals: pandas dataframe of intervals that you want to
+                exclude from the result.
+            blacklist_buffer: default 0. Buffer around blacklist intervals to
+                exclude.
             threshold: only return intervals of which the value exceeds
                 this threshold.
             merge: whether to merge intervals that are directly following
@@ -234,6 +242,11 @@ class BigWig:
         data = pd.DataFrame(
             {"chrom": chrom_key, "start": starts, "end": ends, "value": values}
         )
+        if blacklist_intervals is not None:
+            data = subtract_interval_dataframe(
+                intervals=data, blacklist=blacklist_intervals, buffer=blacklist_buffer
+            )
+
         return data
 
     def get_batch_offsets_and_sizes_with_global_positions(
