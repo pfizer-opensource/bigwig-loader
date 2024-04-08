@@ -51,7 +51,6 @@ def subtract_intervals_with_chrom_keys(cnp.ndarray[object, ndim=1] chroms,
                                     cnp.ndarray[UINT32_t, ndim=1] starts_blacklist,
                                     cnp.ndarray[UINT32_t, ndim=1] ends_blacklist):
     id_to_key = np.array(ID_TO_KEY_CANONICAL + natsorted(set(chroms) - CANONICAL_CHROM_KEYS), dtype=object)
-    print(id_to_key)
     key_to_id = {key: i for i, key in enumerate(id_to_key)}
     chrom_ids = np.array([key_to_id[key] for key in chroms], dtype="uint32")
     chrom_ids_blacklist = np.array([key_to_id[key] for key in chroms_blacklist], dtype="uint32")
@@ -195,7 +194,7 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
             # result.append((interval_start, blacklist_start))
             # intervals[i] = (blacklist_end, interval_end)
         #
-        # elif interval_start < blacklist_start and interval_end > blacklist_end:
+        # elif interval_start <= blacklist_start and interval_end > blacklist_end:
         elif smaller(interval_chrom_id, interval_start, blacklist_chrom_id, blacklist_start) and larger(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_end):
             chrom_id_out_view[k] = interval_chrom_id
             start_out_view[k] = interval_start
@@ -206,8 +205,12 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
             interval_start = blacklist_end
 
         #elif interval_start >= blacklist_start and interval_end > blacklist_end:
+        # first
         elif larger_equal(interval_chrom_id, interval_start, blacklist_chrom_id, blacklist_start) and larger(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_end):
             interval_start = blacklist_end
+            increment_blacklist = True
+
+
             #intervals[i] = (blacklist_end, interval_end)
         #elif interval_start < blacklist_start and interval_end > blacklist_end:
         elif smaller(interval_chrom_id, interval_start, blacklist_chrom_id, blacklist_start) and larger(interval_chrom_id, interval_end, blacklist_chrom_id, blacklist_end):
@@ -222,7 +225,7 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
 
     return chrom_id_out[:k], start_out[:k], end_out[:k], value_out[:k]
 
-cdef bint smaller(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2):
+cdef inline bint smaller(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2) noexcept:
     if chrom1 < chrom2:
         return True
     elif chrom1 == chrom2:
@@ -230,7 +233,7 @@ cdef bint smaller(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2
     else:
         return False
 
-cdef bint larger(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2):
+cdef inline bint larger(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2) noexcept:
     if chrom1 > chrom2:
         return True
     elif chrom1 == chrom2:
@@ -238,8 +241,8 @@ cdef bint larger(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2)
     else:
         return False
 
-cdef bint smaller_equal(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2):
+cdef inline bint smaller_equal(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2) noexcept:
     return not larger(chrom1, pos1, chrom2, pos2)
 
-cdef bint larger_equal(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2):
+cdef inline bint larger_equal(UINT32_t chrom1, UINT32_t pos1, UINT32_t chrom2, UINT32_t pos2) noexcept:
     return not smaller(chrom1, pos1, chrom2, pos2)
