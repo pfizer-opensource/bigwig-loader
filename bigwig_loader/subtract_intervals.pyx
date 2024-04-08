@@ -12,8 +12,13 @@ cdef list ID_TO_KEY_CANONICAL = [f"chr{x}" for x in range(1, 23)] + ["chrX", "ch
 cdef set CANONICAL_CHROM_KEYS = set(ID_TO_KEY_CANONICAL)
 
 
-def subtract_interval_dataframe(intervals: pd.DataFrame, blacklist: pd.DataFrame, buffer: int = 0) -> pd.DataFrame:
+def subtract_interval_dataframe(intervals: pd.DataFrame,
+                                blacklist: pd.DataFrame,
+                                buffer: int = 0) -> pd.DataFrame:
     """
+    Subtract blacklisted intervals from intervals. Intervals should be non-overlapping
+    for this algoriithm to work correctly. The blacklist items are allowed to overlap
+    though.
 
     Args:
         intervals: basis for the intervals
@@ -90,12 +95,8 @@ cpdef subtract_intervals(cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_ids,
     n_intervals = starts.shape[0]
     n_blacklist = starts_blacklist.shape[0]
 
-    # cdef cnp.ndarray[cnp.int32_t, ndim = 1] idx = np.empty_like(chrom_ids, dtype="int32")
-
-    # cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_id_out = np.empty_like(chrom_ids)
-    # cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] start_out = np.empty_like(starts)
-    # cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] end_out = np.empty_like(ends)
-    # cdef cnp.ndarray[cnp.float32_t, ndim = 1] value_out = np.empty_like(values)
+    # note: reserving shape is n_intervals + n_blacklist because each blacklist item could split
+    # interval in two pieces
     cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] chrom_id_out = np.empty(shape=(n_intervals + n_blacklist,), dtype=np.uint32)
     cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] start_out = np.empty(shape=(n_intervals + n_blacklist,), dtype=np.uint32)
     cdef cnp.ndarray[cnp.npy_uint32, ndim = 1] end_out = np.empty(shape=(n_intervals + n_blacklist,), dtype=np.uint32)
