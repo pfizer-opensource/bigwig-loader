@@ -138,7 +138,7 @@ class BigWig:
         self,
         include_chromosomes: Union[Literal["all", "standard"], Sequence[str]] = "all",
         exclude_chromosomes: Optional[Sequence[str]] = None,
-        blacklist_intervals: Optional[pd.DataFrame] = None,
+        blacklist: Optional[pd.DataFrame] = None,
         blacklist_buffer: int = 0,
         threshold: Optional[float] = None,
         merge: bool = False,
@@ -153,7 +153,7 @@ class BigWig:
         Args:
             include_chromosomes: list of chromosome, "standard" or "all" (default).
             exclude_chromosomes: list of chromosomes you want to exclude
-            blacklist_intervals: pandas dataframe of intervals that you want to
+            blacklist: pandas dataframe of intervals that you want to
                 exclude from the result.
             blacklist_buffer: default 0. Buffer around blacklist intervals to
                 exclude.
@@ -242,9 +242,9 @@ class BigWig:
         data = pd.DataFrame(
             {"chrom": chrom_key, "start": starts, "end": ends, "value": values}
         )
-        if blacklist_intervals is not None:
+        if blacklist is not None:
             data = subtract_interval_dataframe(
-                intervals=data, blacklist=blacklist_intervals, buffer=blacklist_buffer
+                intervals=data, blacklist=blacklist, buffer=blacklist_buffer
             )
 
         return data
