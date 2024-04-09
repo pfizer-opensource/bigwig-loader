@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from bigwig_loader.collection import BigWigCollection
+from bigwig_loader.cupy_functions import moving_average
 from bigwig_loader.genome import Genome
 from bigwig_loader.position_sampler import PositionSampler
 
@@ -34,6 +35,10 @@ class BigWigDataset:
             smaller than or equal to sequence_length. If not given will be the same as
             sequence_length.
         window_size: used to down sample the resolution of the target from sequence_length
+        moving_average_window_size: window size for moving average on the target. Can
+            help too smooth out the target. Default: 1, which means no smoothing. If
+            used in combination with window_size, the target is first downsampled and
+            then smoothed.
         batch_size: batch size
         super_batch_size: batch size that is used in the background to load data from
             bigwig files. Should be larger than batch_size. If None, it will be equal to
@@ -63,6 +68,7 @@ class BigWigDataset:
         sequence_length: int = 1000,
         center_bin_to_predict: Optional[int] = None,
         window_size: int = 1,
+        moving_average_window_size: int = 1,
         batch_size: int = 256,
         super_batch_size: Optional[int] = None,
         batches_per_epoch: Optional[int] = None,
@@ -100,6 +106,7 @@ class BigWigDataset:
             sequence_length=sequence_length,
             center_bin_to_predict=center_bin_to_predict,
             window_size=window_size,
+            moving_average_window_size=moving_average_window_size,
             batch_size=super_batch_size,
             batches_per_epoch=super_batches_per_epoch,
             maximum_unknown_bases_fraction=maximum_unknown_bases_fraction,
@@ -166,6 +173,10 @@ class BigWigSuperDataset:
             smaller than or equal to sequence_length. If not given will be the same as
             sequence_length.
         window_size: used to down sample the resolution of the target from sequence_length
+        moving_average_window_size: window size for moving average on the target. Can
+            help too smooth out the target. Default: 1, which means no smoothing. If
+            used in combination with window_size, the target is first downsampled and
+            then smoothed.
         batch_size: batch size
         batches_per_epoch: because the length of an epoch is slightly arbitrary here,
             the number of batches can be set by hand. If not the number of batches per
@@ -192,6 +203,7 @@ class BigWigSuperDataset:
         sequence_length: int = 1000,
         center_bin_to_predict: Optional[int] = None,
         window_size: int = 1,
+        moving_average_window_size: int = 1,
         batch_size: int = 256,
         batches_per_epoch: Optional[int] = None,
         maximum_unknown_bases_fraction: float = 0.1,
@@ -239,6 +251,7 @@ class BigWigSuperDataset:
         self._prepared_out: Optional[cp.ndarray] = None
         self._position_sampler_buffer_size = position_sampler_buffer_size
         self._repeat_same_positions = repeat_same_positions
+        self._moving_average_window_size = moving_average_window_size
 
     def reset_gpu(self) -> None:
         self.bigwig_collection.reset_gpu()
@@ -318,5 +331,6 @@ class BigWigSuperDataset:
                 window_size=self.window_size,
                 out=self._out,
             )
+            target = moving_average(target, self._moving_average_window_size)
             return sequences, target
         raise StopIteration
