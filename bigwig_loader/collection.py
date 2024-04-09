@@ -20,6 +20,7 @@ from bigwig_loader.gpu_decompressor import Decoder
 from bigwig_loader.intervals_to_values_gpu import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
+from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import chromosome_sort
 
 
@@ -212,16 +213,47 @@ class BigWigCollection:
         self,
         include_chromosomes: Union[Literal["all", "standard"], Sequence[str]] = "all",
         exclude_chromosomes: Optional[Sequence[str]] = None,
+        blacklist: Optional[pd.DataFrame] = None,
+        blacklist_buffer: int = 0,
+        padding: int = 0,
         merge: bool = False,
         threshold: float = 0.0,
         merge_allow_gap: int = 0,
         batch_size: int = 4096,
     ) -> pd.DataFrame:
+        """
+        Get Intervals from the collection of intervals. This function
+        in turn calls the intervals method of the BigWig class for each
+        BigWig file in the collection and concatenates, and if wanted merges,
+        the results.
+        Args:
+            include_chromosomes: list of chromosome, "standard" or "all" (default).
+            exclude_chromosomes: list of chromosomes you want to exclude
+            blacklist: pandas dataframe of intervals that you want to
+                exclude from the result.
+            blacklist_buffer: default 0. Buffer around blacklist intervals to
+                exclude.
+            padding: padding around intervals, before start and after end.
+                Default 0.
+            threshold: only return intervals of which the value exceeds
+                this threshold.
+            merge: whether to merge intervals that are directly following
+                each other. The value will be the max value of the merged
+                intervals.
+            merge_allow_gap: default 0. Allow intervals seperated by size
+                merge_allow_gap bases to still be merged.
+            batch_size: number of intervals processed at once.
+        Returns: pandas dataframe of intervals (chrom, start, end, value)
+
+        """
+
         intervals = pd.concat(
             [
                 bw.intervals(
                     include_chromosomes=include_chromosomes,
                     exclude_chromosomes=exclude_chromosomes,
+                    blacklist=blacklist,
+                    blacklist_buffer=blacklist_buffer,
                     threshold=threshold,
                     merge=merge,
                     merge_allow_gap=merge_allow_gap,
@@ -232,9 +264,16 @@ class BigWigCollection:
                 for bw in self.bigwigs
             ]
         )
+        if padding:
+            intervals["start"] = intervals["start"].values.clip(padding) - padding
+            intervals["end"] = intervals["end"].values + padding
         if merge:
             intervals = merge_interval_dataframe(
                 intervals, is_sorted=False, allow_gap=merge_allow_gap
+            )
+        if blacklist is not None:
+            intervals = subtract_interval_dataframe(
+                intervals=intervals, blacklist=blacklist, buffer=blacklist_buffer
             )
         return intervals
 
