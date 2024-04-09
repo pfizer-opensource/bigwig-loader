@@ -20,6 +20,7 @@ from bigwig_loader.gpu_decompressor import Decoder
 from bigwig_loader.intervals_to_values_gpu import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
+from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import chromosome_sort
 
 
@@ -214,6 +215,7 @@ class BigWigCollection:
         exclude_chromosomes: Optional[Sequence[str]] = None,
         blacklist: Optional[pd.DataFrame] = None,
         blacklist_buffer: int = 0,
+        padding: int = 0,
         merge: bool = False,
         threshold: float = 0.0,
         merge_allow_gap: int = 0,
@@ -231,6 +233,8 @@ class BigWigCollection:
                 exclude from the result.
             blacklist_buffer: default 0. Buffer around blacklist intervals to
                 exclude.
+            padding: padding around intervals, before start and after end.
+                Default 0.
             threshold: only return intervals of which the value exceeds
                 this threshold.
             merge: whether to merge intervals that are directly following
@@ -260,9 +264,16 @@ class BigWigCollection:
                 for bw in self.bigwigs
             ]
         )
+        if padding:
+            intervals["start"] = intervals["start"].values.clip(padding) - padding
+            intervals["end"] = intervals["end"].values + padding
         if merge:
             intervals = merge_interval_dataframe(
                 intervals, is_sorted=False, allow_gap=merge_allow_gap
+            )
+        if blacklist is not None:
+            intervals = subtract_interval_dataframe(
+                intervals=intervals, blacklist=blacklist, buffer=blacklist_buffer
             )
         return intervals
 
