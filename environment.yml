@@ -8,37 +8,21 @@ channels:
 dependencies:
   - python>=3.9,<3.11
   - pip
-  - c-compiler
-  - cmake>=3.26.4
-  - cuda-nvcc
-  - cuda-python>=12.0,<13.0a0
-  - cuda-version=12.0
-  - cudf==23.8.*
-  - cupy>=12.0.0
-  - cxx-compiler
   - cython>=0.29,<0.30
-  - dask>=2022.05.2
-  - distributed>=2022.05.2
-  - doxygen=1.8.20
-  - gcc_linux-64=11.*
-  - libcufile
-  - libcufile-dev
-  - ninja
+  - c-compiler
+
+  - kvikio>=24.06.00a
+  - cupy>=12.0.0
   - numpy>=1.21
-  - nvcomp==2.6.1
-  - packaging
-  - pre-commit
-  - pydata-sphinx-theme
-  - pytest
-  - pytest-cov
-  - scikit-build>=0.13.1
-  - sphinx<6
-  - sysroot_linux-64=2.17
-  - zarr
-  - ncls
-  - pyfaidx
   - pandas
+  - pyfaidx
+  - ncls
   - htslib
+  - pydantic
+  - pydantic-settings
+  - python-dotenv
+  - universal_pathlib
+  - natsort
+
   - pip:
-      - git+https://github.com/ap--/kvikio@with-deflate#egg=kvikio&subdirectory=python
       - -e .[dev]
