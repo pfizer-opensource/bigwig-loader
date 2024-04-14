@@ -1,9 +1,6 @@
 import logging
-import os
 from functools import cached_property
 from pathlib import Path
-from typing import Any
-from typing import Iterable
 from typing import Literal
 from typing import Optional
 from typing import Sequence
@@ -13,13 +10,13 @@ import cupy as cp
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from upath import UPath
 
 from bigwig_loader.bigwig import BigWig
 from bigwig_loader.gpu_decompressor import Decoder
 from bigwig_loader.intervals_to_values_gpu import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
+from bigwig_loader.path import interpret_path
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import chromosome_sort
 
@@ -403,74 +400,3 @@ class BigWigCollection:
                 ]
         local_chrom_ids_to_offset = chromosome_offsets[chrom_id_mapping_matrix]
         return chromosome_offset_dict, local_chrom_ids_to_offset
-
-
-def get_bigwig_files_from_path(
-    path: Path, file_extensions: Iterable[str] = (".bigWig", ".bw"), crawl: bool = True
-) -> list[Path]:
-    """
-    For a path object, get all bigwig files. If the path is directly pointing
-    to a bigwig file, a list with just that file is returned. In case of a
-    directory all files are gathered with file extensions that are part of
-    file_extensions.
-    Args:
-        path: or upath.Path object. Either directory or BigWig file
-        file_extensions: used to find all BigWig files in a directory.
-            Default: (".bigWig", ".bw")
-        crawl: whether to find BigWig files in subdirectories. Default: True.
-
-    Returns: list of paths to BigWig files.
-
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"No such file or directory: {path}")
-    elif path.is_dir():
-        if crawl:
-            pattern = "**/*"
-        else:
-            pattern = "*"
-        return [
-            file
-            for extension in file_extensions
-            for file in path.glob(f"{pattern}{extension}")
-        ]
-    return [path]
-
-
-def interpret_path(
-    bigwig_path: Union[
-        Union[str, "os.PathLike[Any]"], Iterable[Union[str, "os.PathLike[Any]"]]
-    ],
-    file_extensions: Iterable[str] = (".bigWig", ".bw"),
-    crawl: bool = True,
-) -> list[Path]:
-    """
-    Get all bigwig files for a path. Also excepts strings.
-    If the path is directly pointing to a bigwig file, a list with just that
-    file is returned. In case of a directory all files are gathered with file
-    extensions that are part of file_extensions.
-    Args:
-        bigwig_path: str, Path or upath.Path object. Either directory or BigWig file
-        file_extensions: used to find all BigWig files in a directory.
-            Default: (".bigWig", ".bw")
-        crawl: whether to find BigWig files in subdirectories. Default: True.
-
-    Returns: list of paths to BigWig files.
-
-    """
-    if isinstance(bigwig_path, str) or isinstance(bigwig_path, os.PathLike):
-        return get_bigwig_files_from_path(
-            UPath(bigwig_path), file_extensions=file_extensions, crawl=crawl
-        )
-
-    elif isinstance(bigwig_path, Iterable):
-        return [
-            path
-            for element in bigwig_path
-            for path in interpret_path(
-                element, file_extensions=file_extensions, crawl=crawl
-            )
-        ]
-    raise ValueError(
-        f"Can not interpret {bigwig_path} as path or a collection of paths."
-    )
