@@ -1,9 +1,11 @@
+import cupy as cp
 import pandas as pd
 import pytest
 
 from bigwig_loader import config
 from bigwig_loader.collection import BigWigCollection
 from bigwig_loader.dataset import BigWigDataset
+from bigwig_loader.path import interpret_path
 from bigwig_loader.position_sampler import PositionSampler
 from bigwig_loader.util import sort_intervals
 
@@ -88,3 +90,36 @@ def test_chromosomes_present_in_all_files(collection: BigWigCollection):
     chromosomes = collection.get_chromosomes_present_in_all_files("standard")
     assert len(chromosomes) > 0
     assert all(isinstance(c, str) and c.strip() for c in chromosomes)
+
+
+def test_scaling(bigwig_path, reference_genome_path):
+    stems = [path.stem for path in sorted(interpret_path(bigwig_path))]
+    scale = {stems[0]: 3, stems[1]: 10}
+
+    unscaled = BigWigCollection(
+        bigwig_path,
+        first_n_files=2,
+    )
+    scaled = BigWigCollection(
+        bigwig_path,
+        first_n_files=2,
+        scale=scale,
+    )
+
+    intervals = _get_example_batch_of_intervals(n_bases=1000, batch_size=32)
+
+    unscaled_batch = unscaled.get_batch(
+        intervals["chrom"].values,
+        intervals["start"].values,
+        intervals["end"].values,
+    )
+
+    scaled_batch = scaled.get_batch(
+        intervals["chrom"].values,
+        intervals["start"].values,
+        intervals["end"].values,
+    )
+
+    assert cp.allclose(
+        scaled_batch, unscaled_batch * cp.asarray([3, 10]).reshape(1, 2, 1)
+    )

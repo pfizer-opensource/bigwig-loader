@@ -1,6 +1,6 @@
 import pytest
 
-from bigwig_loader.collection import interpret_path
+from bigwig_loader.path import interpret_path
 
 
 @pytest.fixture(scope="session")

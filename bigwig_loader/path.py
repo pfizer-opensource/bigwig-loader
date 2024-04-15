@@ -2,17 +2,10 @@ import os
 from pathlib import Path
 from typing import Any
 from typing import Iterable
+from typing import Optional
 from typing import Union
 
 from upath import UPath
-
-
-def subpaths(path: Path) -> Iterable[Path]:
-    parts = path.parts
-    stemmed = parts[:-1] + (path.stem,)
-    for i in range(len(parts)):
-        yield Path(*parts[i:])
-        yield Path(*stemmed[i:])
 
 
 def get_bigwig_files_from_path(
@@ -86,41 +79,79 @@ def interpret_path(
     )
 
 
-def match_key_to_path(path: Path, keys: Iterable[str | Path]) -> str | Path | None:
+def subpaths(path: Path, depth: Optional[int] = None) -> Iterable[Path]:
+    """Iteratively breaks up a path like
+    /home/jim/bigwig_files/liver/ENCFF1234.bigWig into
+    subpaths with less and parent directories. After this is done
+    to the full path, the same thing will be done to the parent of
+    path.
+    Example:
+        $ subpaths(Path("/home/jim/bigwig_files/liver/ENCFF1234.bigWig"), depth=3)
+        bigwig_files/liver/ENCFF1234.bigWig
+        bigwig_files/liver/ENCFF1234
+        liver/ENCFF1234.bigWig
+        liver/ENCFF1234
+        ENCFF1234.bigWig
+        ENCFF1234
+        bigwig_files/liver
+        liver
+    ```
+    """
+    parts = path.parts
+    stemmed = parts[:-1] + (path.stem,)
+    if depth is not None:
+        parts = parts[-depth:]
+        stemmed = stemmed[-depth:]
+    for i in range(len(parts) - 1):
+        sub_base = parts[: len(parts) - i]
+        sub_stemmed = stemmed[: len(stemmed) - i]
+        for j in range(len(sub_base)):
+            yield Path(*sub_base[j:])
+            if sub_stemmed != sub_base:
+                yield Path(*sub_stemmed[j:])
+
+
+def match_key_to_path(path: Path, keys: Iterable[str | Path]) -> Optional[str | Path]:
+    """
+    Find  the key in keys that best describes the Path. Direct matches
+    like file_name.bigWig to file_name.bigWig are the simplest case. After
+    that also matches like file_name to file_name.bigWig are considered.
+    When a longer path is, like /home/jim/bigwig_files/liver/ENCFF1234.bigWig,
+    first it's checked whether the full path is in keys. If not, it continues to
+    check whether jim/bigwig_files/liver/ENCFF1234.bigWig is in keys. After that
+    bigwig_files/liver/ENCFF1234.bigWig etc, until the path is just the file name/stem.
+    When there is still no match, we try the same procedure with the parent directory
+    as input. This is handy is you want to associate all liver bigwig files with the
+    scaling factor for liver for instance.
+
+    Args:
+        path: Path object
+        keys: Iterable of strings or Path objects
+
+    Returns: key that best matches the path
+
+    """
+    if not keys:
+        return None
     for subpath in subpaths(path):
+        if str(subpath) in keys:
+            return str(subpath)
         if subpath in keys:
             return subpath
-        elif str(subpath) in keys:
-            return str(subpath)
-        elif subpath.stem in keys:
-            return subpath.stem
-        elif str(subpath.stem) in keys:
-            return str(subpath.stem)
     return None
 
 
-def match_keys_to_paths(
-    keys: list[str | Path], paths: list[Path], allow_unmatched_paths: bool = False
-) -> dict[Path, str | Path | None]:
-    """
-    Matches keys to paths, starting with thw full path
-    Args:
-        keys:
-        paths:
-        allow_unmatched_paths:
-
-    Returns:
-
-    """
-    mapping = {}
-    for path in paths:
-        key = match_key_to_path(path, keys)
-        if key is None and not allow_unmatched_paths:
-            raise ValueError(f"No key found for {path}")
-        mapping[path] = key
-    return mapping
+def map_path_to_value(
+    path: Path, value_dict: dict[Union[str | Path], Any], default: Any = None
+) -> Any:
+    key = match_key_to_path(path=path, keys=value_dict.keys())
+    if key is None:
+        return default
+    return value_dict[key]
 
 
 if __name__ == "__main__":
-    example = Path("/home/jim/projects/my_dir/text_file.txt")
-    print(list(subpaths(example)))
+    example = Path("/home/jim/bigwig_files/liver/ENCFF1234.bigWig")
+    for p in subpaths(example):
+        print(p)
+    # print(list(subpaths(example)))

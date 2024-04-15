@@ -51,6 +51,10 @@ class BigWigDataset:
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
         file_extensions: load files with these extensions (default .bw and .bigWig)
         crawl: whether to search in sub-directories for BigWig files
+        scale: Optional, dictionary with scaling factors for each BigWig file.
+            If None, no scaling is done. Keys can be (partial) file paths. See
+            bigwig_loader.path.match_key_to_path for more information about how
+            dict keys are mapped to paths.
         first_n_files: Only use the first n files (handy for debugging on less tasks)
         position_sampler_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
@@ -78,6 +82,7 @@ class BigWigDataset:
         ] = "onehot",
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
+        scale: Optional[dict[Union[str | Path], Any]] = None,
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
@@ -113,6 +118,7 @@ class BigWigDataset:
             sequence_encoder=sequence_encoder,
             file_extensions=file_extensions,
             crawl=crawl,
+            scale=scale,
             first_n_files=first_n_files,
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,
@@ -186,6 +192,10 @@ class BigWigSuperDataset:
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
         file_extensions: load files with these extensions (default .bw and .bigWig)
         crawl: whether to search in sub-directories for BigWig files
+        scale: Optional, dictionary with scaling factors for each BigWig file.
+            If None, no scaling is done. Keys can be (partial) file paths. See
+            bigwig_loader.path.match_key_to_path for more information about how
+            dict keys are mapped to paths.
         first_n_files: Only use the first n files (handy for debugging on less tasks)
         position_sampler_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
@@ -212,6 +222,7 @@ class BigWigSuperDataset:
         ] = "onehot",
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
+        scale: Optional[dict[Union[str | Path], Any]] = None,
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
@@ -247,6 +258,7 @@ class BigWigSuperDataset:
         self._first_n_files = first_n_files
         self._file_extensions = file_extensions
         self._crawl = crawl
+        self._scale = scale
         self._genome: Optional[Genome] = None
         self._prepared_out: Optional[cp.ndarray] = None
         self._position_sampler_buffer_size = position_sampler_buffer_size
@@ -292,6 +304,7 @@ class BigWigSuperDataset:
                 self._bigwig_path,
                 file_extensions=self._file_extensions,
                 crawl=self._crawl,
+                scale=self._scale,
                 first_n_files=self._first_n_files,
             )
             return self._bigwig_collection
