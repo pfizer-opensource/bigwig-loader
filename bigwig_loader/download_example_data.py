@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from bigwig_loader import config
-from bigwig_loader.collection import get_bigwig_files_from_path
+from bigwig_loader.path import get_bigwig_files_from_path
 
 LOGGER = logging.getLogger(__name__)
 

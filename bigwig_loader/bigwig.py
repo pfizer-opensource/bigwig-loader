@@ -31,18 +31,20 @@ from bigwig_loader.util import get_standard_chromosomes
 
 
 class BigWig:
-    def __init__(self, path: Path, id: Optional[int] = None):
+    def __init__(self, path: Path, id: Optional[int] = None, scale: float = 1.0):
         """
         Create a BigWig object representing one BigWig file.
         Args:
             path: path to BigWig file
             id: integer representing the file in a collection
                 when part of a collection.
+            scale: scale values in bigwig file by this number.
         """
 
         with open(path, "rb") as bigwig:
             self.path = path
             self.id = id
+            self.scale = scale
             self.bbi_header = BBIHeader.from_file(bigwig)
             self.zoom_headers = ZoomHeader.all(
                 bigwig, first_offset=64, n_zoom_levels=self.bbi_header.zoom_levels
@@ -213,6 +215,7 @@ class BigWig:
                 compressed_chunk_sizes,
             )
             chrom_id = cp.repeat(chrom_id, n_rows_for_chunks.get().tolist())
+            value *= self.scale
             if threshold:
                 mask = value > threshold
                 chrom_id = chrom_id[mask]

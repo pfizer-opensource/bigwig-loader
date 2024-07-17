@@ -1,9 +1,7 @@
 import logging
-import os
 from functools import cached_property
 from pathlib import Path
 from typing import Any
-from typing import Iterable
 from typing import Literal
 from typing import Optional
 from typing import Sequence
@@ -13,13 +11,14 @@ import cupy as cp
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from upath import UPath
 
 from bigwig_loader.bigwig import BigWig
 from bigwig_loader.gpu_decompressor import Decoder
 from bigwig_loader.intervals_to_values_gpu import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
+from bigwig_loader.path import interpret_path
+from bigwig_loader.path import map_path_to_value
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import chromosome_sort
 
@@ -32,8 +31,12 @@ class BigWigCollection:
         file_extensions: only used when looking in directories for BigWig files.
             All files with these extensions are assumed to be BigWIg files:
             default: (".bigWig", ".bw").
-        walk: to walk the directory tree or not. If False, subdirectories are
+        crawl: to walk the directory tree or not. If False, subdirectories are
             ignored.
+        scale: Optional, dictionary with scaling factors for each BigWig file.
+            If None, no scaling is done. Keys can be (partial) file paths. See
+            bigwig_loader.path.match_key_to_path for more information about how
+            dict keys are mapped to paths.
         first_n_files: Optional, only consider the first n files (after sorting).
             Handy for debugging.
     """
@@ -43,13 +46,26 @@ class BigWigCollection:
         bigwig_path: Union[str, Sequence[str], Path, Sequence[Path]],
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
+        scale: Optional[dict[Union[str | Path], Any]] = None,
         first_n_files: Optional[int] = None,
         pinned_memory_size: int = 10000,
     ):
         self.bigwig_paths = sorted(
             interpret_path(bigwig_path, file_extensions=file_extensions, crawl=crawl)
         )[:first_n_files]
-        self.bigwigs = [BigWig(path, id=i) for i, path in enumerate(self.bigwig_paths)]
+
+        scale = scale or {}
+        self._scaling_factors = [
+            map_path_to_value(path, value_dict=scale, default=1)
+            for path in self.bigwig_paths
+        ]
+
+        self.bigwigs = [
+            BigWig(path, id=i, scale=scaling_factor)
+            for i, (path, scaling_factor) in enumerate(
+                zip(self.bigwig_paths, self._scaling_factors)
+            )
+        ]
 
         (
             self.chromosome_offset_dict,
@@ -85,6 +101,8 @@ class BigWigCollection:
             del self.__dict__["decoder"]
         if "memory_bank" in self.__dict__:
             del self.__dict__["memory_bank"]
+        if "scaling_factors_cupy" in self.__dict__:
+            del self.__dict__["scaling_factors_cupy"]
 
     @cached_property
     def decoder(self) -> Decoder:
@@ -97,6 +115,12 @@ class BigWigCollection:
     @cached_property
     def memory_bank(self) -> MemoryBank:
         return MemoryBank(nbytes=self.pinned_memory_size, elastic=True)
+
+    @cached_property
+    def scaling_factors_cupy(self) -> cp.ndarray:
+        return cp.asarray(self._scaling_factors, dtype=cp.float32).reshape(
+            1, len(self._scaling_factors), 1
+        )
 
     def _get_out_tensor(self, batch_size: int, sequence_length: int) -> cp.ndarray:
         """Resuses a reserved tensor if possible (when out shape is constant),
@@ -183,7 +207,9 @@ class BigWigCollection:
                 out=partial_out,
             )
             i = bigwig_end
-        return cp.transpose(out, (1, 0, 2))
+        batch = cp.transpose(out, (1, 0, 2))
+        batch *= self.scaling_factors_cupy
+        return batch
 
     def make_positions_global(
         self,
@@ -225,7 +251,9 @@ class BigWigCollection:
         Get Intervals from the collection of intervals. This function
         in turn calls the intervals method of the BigWig class for each
         BigWig file in the collection and concatenates, and if wanted merges,
-        the results.
+        the results. If the "scale" argument was used when the collection was
+        created, the values are scaled accordingly and the threshold is applied
+        on the scaled values.
         Args:
             include_chromosomes: list of chromosome, "standard" or "all" (default).
             exclude_chromosomes: list of chromosomes you want to exclude
@@ -403,74 +431,3 @@ class BigWigCollection:
                 ]
         local_chrom_ids_to_offset = chromosome_offsets[chrom_id_mapping_matrix]
         return chromosome_offset_dict, local_chrom_ids_to_offset
-
-
-def get_bigwig_files_from_path(
-    path: Path, file_extensions: Iterable[str] = (".bigWig", ".bw"), crawl: bool = True
-) -> list[Path]:
-    """
-    For a path object, get all bigwig files. If the path is directly pointing
-    to a bigwig file, a list with just that file is returned. In case of a
-    directory all files are gathered with file extensions that are part of
-    file_extensions.
-    Args:
-        path: or upath.Path object. Either directory or BigWig file
-        file_extensions: used to find all BigWig files in a directory.
-            Default: (".bigWig", ".bw")
-        crawl: whether to find BigWig files in subdirectories. Default: True.
-
-    Returns: list of paths to BigWig files.
-
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"No such file or directory: {path}")
-    elif path.is_dir():
-        if crawl:
-            pattern = "**/*"
-        else:
-            pattern = "*"
-        return [
-            file
-            for extension in file_extensions
-            for file in path.glob(f"{pattern}{extension}")
-        ]
-    return [path]
-
-
-def interpret_path(
-    bigwig_path: Union[
-        Union[str, "os.PathLike[Any]"], Iterable[Union[str, "os.PathLike[Any]"]]
-    ],
-    file_extensions: Iterable[str] = (".bigWig", ".bw"),
-    crawl: bool = True,
-) -> list[Path]:
-    """
-    Get all bigwig files for a path. Also excepts strings.
-    If the path is directly pointing to a bigwig file, a list with just that
-    file is returned. In case of a directory all files are gathered with file
-    extensions that are part of file_extensions.
-    Args:
-        bigwig_path: str, Path or upath.Path object. Either directory or BigWig file
-        file_extensions: used to find all BigWig files in a directory.
-            Default: (".bigWig", ".bw")
-        crawl: whether to find BigWig files in subdirectories. Default: True.
-
-    Returns: list of paths to BigWig files.
-
-    """
-    if isinstance(bigwig_path, str) or isinstance(bigwig_path, os.PathLike):
-        return get_bigwig_files_from_path(
-            UPath(bigwig_path), file_extensions=file_extensions, crawl=crawl
-        )
-
-    elif isinstance(bigwig_path, Iterable):
-        return [
-            path
-            for element in bigwig_path
-            for path in interpret_path(
-                element, file_extensions=file_extensions, crawl=crawl
-            )
-        ]
-    raise ValueError(
-        f"Can not interpret {bigwig_path} as path or a collection of paths."
-    )
