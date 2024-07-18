@@ -21,10 +21,10 @@ from bigwig_loader.parser import BBIHeader
 from bigwig_loader.parser import ChromosomeTreeHeader
 from bigwig_loader.parser import ChromosomeTreeNode
 from bigwig_loader.parser import RTreeIndexHeader
-from bigwig_loader.parser import RTreeNode
 from bigwig_loader.parser import TotalSummary
 from bigwig_loader.parser import WIGSectionHeader
 from bigwig_loader.parser import ZoomHeader
+from bigwig_loader.parser import collect_leaf_nodes
 from bigwig_loader.store import BigWigStore
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import get_standard_chromosomes
@@ -67,16 +67,8 @@ class BigWig:
             self.rtree_index_header = RTreeIndexHeader.from_file_and_offset(
                 bigwig, self.bbi_header.full_index_offset
             )
-            self.rtree_head_node = RTreeNode.from_file_and_offset(
-                file_object=bigwig,
-                start_chrom_ix=self.rtree_index_header.start_chrom_ix,
-                start_base=self.rtree_index_header.start_base,
-                end_chrom_ix=self.rtree_index_header.end_chrom_ix,
-                end_base=self.rtree_index_header.end_base,
-                offset=None,
-            )
 
-            self.rtree_leaf_nodes = self.rtree_head_node.get_leaf_nodes()
+            self.rtree_leaf_nodes = collect_leaf_nodes(file_object=bigwig, offset=None)
             self.max_rows_per_chunk = self._guess_max_rows_per_chunk(bigwig)
 
         self.chrom_to_chrom_id: dict[str, int] = {
@@ -192,8 +184,8 @@ class BigWig:
         selected_df = self.reference_df[
             self.reference_df["start_chrom_key"].isin(chromosome_keys)
         ].sort_values(by=["start_chrom_ix", "start_base"])
-
         offsets = selected_df["data_offset"].values
+
         sizes = selected_df["data_size"].values
 
         chrom_ids = []
@@ -203,9 +195,9 @@ class BigWig:
         for i in range(0, len(offsets), batch_size):
             memory_bank.reset()
             memory_bank.add_many(
-                self.store._fh,
-                offsets[i : i + batch_size],
-                sizes[i : i + batch_size],
+                file_handle=self.store._fh,
+                offsets=offsets[i : i + batch_size],
+                sizes=sizes[i : i + batch_size],
                 skip_bytes=2,
             )
             gpu_byte_array, comp_chunks, compressed_chunk_sizes = memory_bank.to_gpu()
@@ -275,20 +267,7 @@ class BigWig:
         return self.store.get_offsets_and_sizes(np.sort(np.unique(right_index)))
 
     def build_ncls_index(self) -> tuple[NCLS, pd.DataFrame]:
-        leaf_nodes = self.rtree_leaf_nodes
-
-        df = pd.DataFrame(
-            {
-                "start_chrom_ix": [
-                    leaf_node.start_chrom_ix for leaf_node in leaf_nodes
-                ],
-                "start_base": [leaf_node.start_base for leaf_node in leaf_nodes],
-                "end_chrom_ix": [leaf_node.end_chrom_ix for leaf_node in leaf_nodes],
-                "end_base": [leaf_node.end_base for leaf_node in leaf_nodes],
-                "data_offset": [leaf_node.data_offset for leaf_node in leaf_nodes],
-                "data_size": [leaf_node.data_size for leaf_node in leaf_nodes],
-            }
-        )
+        df = pd.DataFrame(self.rtree_leaf_nodes)
         df["start_chrom_key"] = self._chrom_id_to_chrom[df["start_chrom_ix"].values]  # type: ignore
         df["start_abs"] = self.make_positions_global(
             df["start_chrom_ix"].values, df["start_base"].values  # type: ignore
@@ -407,13 +386,17 @@ class BigWig:
         """
 
         rows_for_chunks = []
-        if len(self.rtree_leaf_nodes) < sample_size:
-            sample_leaf_nodes = self.rtree_leaf_nodes
-        else:
-            sample_leaf_nodes = sample(self.rtree_leaf_nodes, sample_size)
-        for leaf_node in sample_leaf_nodes:
-            file_object.seek(leaf_node.data_offset, 0)  # type: ignore
-            decoded = zlib.decompress(file_object.read(leaf_node.data_size))  # type: ignore
+
+        data_offsets = self.rtree_leaf_nodes["data_offset"]
+        data_sizes = self.rtree_leaf_nodes["data_size"]
+        if len(data_offsets) > sample_size:
+            sample_indices = sample(range(len(data_offsets)), sample_size)
+            data_offsets = data_offsets[sample_indices]
+            data_sizes = data_sizes[sample_indices]
+
+        for data_offset, data_size in zip(data_offsets, data_sizes):
+            file_object.seek(data_offset, 0)  # type: ignore
+            decoded = zlib.decompress(file_object.read(data_size))  # type: ignore
             header = WIGSectionHeader.from_bytes(decoded[:24])
             rows_for_chunks.append(header.item_count)
         return max(rows_for_chunks)

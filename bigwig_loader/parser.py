@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import BinaryIO
 from typing import Optional
 
+import numpy as np
+
 BBI_HEADER_ENCODING = "<LHHQQQHHQQLQ"
 ZOOM_HEADER_ENCODING = "<LLQQ"
 TOTAL_SUMMARY_ENCODING = "<Qdddd"
@@ -13,6 +15,17 @@ CHROMOSOME_TREE_NODE_ENCODING = "<??H"
 RTREE_INDEX_HEADER_ENCODING = "<LLQLLLLQLL"
 RTREE_NODE_ENCODING = "<??H"
 WIG_SECTION_HEADER_ENCODING = "<LLLLLBBH"
+
+NUMPY_RTREE_LEAFNODE_ENCODING = np.dtype(
+    [
+        ("start_chrom_ix", "u4"),
+        ("start_base", "u4"),
+        ("end_chrom_ix", "u4"),
+        ("end_base", "u4"),
+        ("data_offset", "u8"),
+        ("data_size", "u8"),
+    ]
+)
 
 
 @dataclass
@@ -359,3 +372,40 @@ class RTreeNode:
             data_offset=None,
             data_size=None,
         )
+
+
+def collect_leaf_nodes(
+    file_object: BinaryIO, offset: Optional[int] = None
+) -> np.typing.NDArray[np.void]:
+    return np.concatenate(_collect_leaf_nodes(file_object, offset))
+
+
+def _collect_leaf_nodes(
+    file_object: BinaryIO, offset: Optional[int] = None
+) -> np.typing.NDArray[np.void]:
+    # Assumes the file object is already at the correct position
+    if offset is not None:
+        file_object.seek(offset, 0)
+    is_leaf, reserved, count = struct.unpack(RTREE_NODE_ENCODING, file_object.read(4))
+
+    if is_leaf:
+        data = np.fromfile(
+            file_object, dtype=NUMPY_RTREE_LEAFNODE_ENCODING, count=count
+        )
+        return [data]
+    else:
+        leaf_nodes = []
+        position = file_object.tell()
+        for i in range(count):
+            file_object.seek(position)
+            (
+                start_chrom_ix,
+                start_base,
+                end_chrom_ix,
+                end_base,
+                data_offset,
+            ) = struct.unpack("<LLLLQ", file_object.read(24))
+            position = file_object.tell()
+            leaf_node_data = _collect_leaf_nodes(file_object, data_offset)
+            leaf_nodes.extend(leaf_node_data)
+        return leaf_nodes

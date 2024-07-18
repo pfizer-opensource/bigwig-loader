@@ -61,6 +61,10 @@ class MemoryBank:
         Returns:
 
         """
+        # cast this to python int because when it's uint64 and we add/subtract
+        # skip_bytes, it somehow becomes float64, which we don't want.
+        offset = int(offset)
+        size = int(size)
         offset += skip_bytes
         size -= skip_bytes
         if file_handle is not self._current_file_handle:
