@@ -305,9 +305,8 @@ class RTreeNode:
 
         children = []
         position = file_object.tell()
-        for i in range(count):
-            file_object.seek(position)
-            if is_leaf:
+        if is_leaf:
+            for i in range(count):
                 (
                     start_chrom_ix,
                     start_base,
@@ -316,8 +315,6 @@ class RTreeNode:
                     data_offset,
                     data_size,
                 ) = struct.unpack("<LLLLQQ", file_object.read(32))
-                position = file_object.tell()
-
                 child_node = RTreeNode(
                     is_leaf=True,
                     children=[],
@@ -328,7 +325,11 @@ class RTreeNode:
                     data_offset=data_offset,
                     data_size=data_size,
                 )
-            else:
+                children.append(child_node)
+
+        else:
+            for i in range(count):
+                file_object.seek(position)
                 (
                     start_chrom_ix,
                     start_base,
