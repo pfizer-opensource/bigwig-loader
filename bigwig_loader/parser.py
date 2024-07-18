@@ -347,7 +347,7 @@ class RTreeNode:
                     end_base=end_base,
                     offset=data_offset,
                 )
-            children.append(child_node)
+                children.append(child_node)
 
         return cls(
             is_leaf=False,
