@@ -27,6 +27,16 @@ NUMPY_RTREE_LEAFNODE_ENCODING = np.dtype(
     ]
 )
 
+NUMPY_RTREE_NODE_ENCODING = np.dtype(
+    [
+        ("start_chrom_ix", "u4"),
+        ("start_base", "u4"),
+        ("end_chrom_ix", "u4"),
+        ("end_base", "u4"),
+        ("data_offset", "u8"),
+    ]
+)
+
 
 @dataclass
 class BBIHeader:
@@ -394,18 +404,10 @@ def _collect_leaf_nodes(
         )
         return [data]
     else:
+        data = np.fromfile(file_object, dtype=NUMPY_RTREE_NODE_ENCODING, count=count)
+        data_offsets = data["data_offset"]
         leaf_nodes = []
-        position = file_object.tell()
-        for i in range(count):
-            file_object.seek(position)
-            (
-                start_chrom_ix,
-                start_base,
-                end_chrom_ix,
-                end_base,
-                data_offset,
-            ) = struct.unpack("<LLLLQ", file_object.read(24))
-            position = file_object.tell()
+        for data_offset in data_offsets:
             leaf_node_data = _collect_leaf_nodes(file_object, data_offset)
             leaf_nodes.extend(leaf_node_data)
         return leaf_nodes
