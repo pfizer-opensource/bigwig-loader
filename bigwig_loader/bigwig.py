@@ -91,8 +91,8 @@ class BigWig:
         self.ncls_index, self.reference_df = self.build_ncls_index()
         self.store = BigWigStore(
             self.path,
-            chunk_sizes=self.reference_df["data_size"].values,  # type: ignore
-            chunk_offsets=self.reference_df["data_offset"].values,  # type: ignore
+            chunk_sizes=self.reference_df["data_size"],  # type: ignore
+            chunk_offsets=self.reference_df["data_offset"],  # type: ignore
         )
 
     def chromosomes(
@@ -181,12 +181,16 @@ class BigWig:
         # files, it does not work to sort the resulting chunk_ids, as their order
         # is determined by the consensus order that was created over all bigwig
         # files.
-        selected_df = self.reference_df[
-            self.reference_df["start_chrom_key"].isin(chromosome_keys)
-        ].sort_values(by=["start_chrom_ix", "start_base"])
-        offsets = selected_df["data_offset"].values
+        chrom_ids = np.array([self.chrom_to_chrom_id[key] for key in chromosome_keys])
+        mask = np.in1d(self.reference_df["start_chrom_ix"], chrom_ids)
+        filtered_array = self.reference_df[mask]
+        sort_indices = np.lexsort(
+            (filtered_array["start_base"], filtered_array["start_chrom_ix"])
+        )
+        sorted_array = filtered_array[sort_indices]
 
-        sizes = selected_df["data_size"].values
+        offsets = sorted_array["data_offset"]
+        sizes = sorted_array["data_size"]
 
         chrom_ids = []
         starts = []
@@ -267,17 +271,42 @@ class BigWig:
         return self.store.get_offsets_and_sizes(np.sort(np.unique(right_index)))
 
     def build_ncls_index(self) -> tuple[NCLS, pd.DataFrame]:
-        df = pd.DataFrame(self.rtree_leaf_nodes)
-        df["start_chrom_key"] = self._chrom_id_to_chrom[df["start_chrom_ix"].values]  # type: ignore
-        df["start_abs"] = self.make_positions_global(
-            df["start_chrom_ix"].values, df["start_base"].values  # type: ignore
+        dtype = np.dtype(
+            [
+                ("start_chrom_ix", "u4"),
+                ("start_base", "u4"),
+                ("end_chrom_ix", "u4"),
+                ("end_base", "u4"),
+                ("data_offset", "u8"),
+                ("data_size", "u8"),
+                ("start_abs", "i8"),
+                ("end_abs", "i8"),
+            ]
         )
-        df["end_abs"] = self.make_positions_global(
-            df["end_chrom_ix"].values, df["end_base"].values  # type: ignore
+
+        data = np.empty(self.rtree_leaf_nodes.shape, dtype=dtype)
+        data["start_chrom_ix"] = self.rtree_leaf_nodes["start_chrom_ix"]  # type: ignore
+        data["start_base"] = self.rtree_leaf_nodes["start_base"]  # type: ignore
+        data["end_chrom_ix"] = self.rtree_leaf_nodes["end_chrom_ix"]  # type: ignore
+        data["end_base"] = self.rtree_leaf_nodes["end_base"]  # type: ignore
+        data["data_offset"] = self.rtree_leaf_nodes["data_offset"]  # type: ignore
+        data["data_size"] = self.rtree_leaf_nodes["data_size"]  # type: ignore
+        data["start_abs"] = self.make_positions_global(
+            self.rtree_leaf_nodes["start_chrom_ix"], self.rtree_leaf_nodes["start_base"]  # type: ignore
+        ).astype(np.int64)
+        data["end_abs"] = self.make_positions_global(
+            self.rtree_leaf_nodes["end_chrom_ix"], self.rtree_leaf_nodes["end_base"]  # type: ignore
+        ).astype(np.int64)
+
+        sort_indices = np.argsort(data["start_abs"])
+        sorted_data = data[sort_indices]
+
+        ncls = NCLS(
+            sorted_data["start_abs"],
+            sorted_data["end_abs"],
+            np.arange(len(sorted_data)),
         )
-        df = df.sort_values(by="start_abs").reset_index(drop=True)
-        ncls = NCLS(df["start_abs"].values, df["end_abs"].values, df.index.values)
-        return ncls, df
+        return ncls, sorted_data
 
     def search_ncls(
         self, query_df: pd.DataFrame, use_key: bool = False
