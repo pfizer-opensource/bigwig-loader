@@ -400,7 +400,7 @@ class BigWig:
         return mapping  # type: ignore
 
     def _guess_max_rows_per_chunk(
-        self, file_object: BinaryIO, sample_size: int = 300
+        self, file_object: BinaryIO, sample_size: int = 100
     ) -> int:
         """
         Randomly samples some chunks and looks in the header
