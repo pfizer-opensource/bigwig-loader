@@ -184,7 +184,7 @@ class BigWig:
         allowed_chrom_ids = np.array(
             [self.chrom_to_chrom_id[key] for key in chromosome_keys]
         )
-        mask = np.in1d(self.reference_data["start_chrom_ix"], allowed_chrom_ids)
+        mask = np.isin(self.reference_data["start_chrom_ix"], allowed_chrom_ids)
         filtered_array = self.reference_data[mask]
         sort_indices = np.lexsort(
             (filtered_array["start_base"], filtered_array["start_chrom_ix"])
