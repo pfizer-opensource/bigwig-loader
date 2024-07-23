@@ -1,4 +1,5 @@
 import logging
+import math
 
 import cupy as cp
 
@@ -203,7 +204,7 @@ def intervals_to_values(
 
 
 def get_grid_and_block_size(n_threads: int) -> tuple[int, int]:
-    n_blocks_needed = cp.ceil(n_threads / 512).astype(dtype=cp.int32).item()
+    n_blocks_needed = math.ceil(n_threads / 512)
     if n_blocks_needed == 1:
         threads_per_block = n_threads
     else:
