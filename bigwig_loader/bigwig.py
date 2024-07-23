@@ -79,7 +79,7 @@ class BigWig:
         self.chromosome_offsets: npt.NDArray[np.int64] = None  # type: ignore
         self.store: BigWigStore = None  # type: ignore
         self.ncls_index: NCLS = None
-        self.reference_df: pd.DataFrame = None  # type: ignore
+        self.reference_data: npt.NDArray[np.void] = None  # type: ignore
 
     def run_indexing(self, chromosome_offsets: npt.NDArray[np.int64]) -> None:
         """Run NCLS indexing of BigWig file. The bigwig file has
@@ -88,11 +88,11 @@ class BigWig:
         """
 
         self.chromosome_offsets = chromosome_offsets
-        self.ncls_index, self.reference_df = self.build_ncls_index()
+        self.ncls_index, self.reference_data = self.build_ncls_index()
         self.store = BigWigStore(
             self.path,
-            chunk_sizes=self.reference_df["data_size"],  # type: ignore
-            chunk_offsets=self.reference_df["data_offset"],  # type: ignore
+            chunk_sizes=self.reference_data["data_size"],  # type: ignore
+            chunk_offsets=self.reference_data["data_offset"],  # type: ignore
         )
 
     def chromosomes(
@@ -181,9 +181,11 @@ class BigWig:
         # files, it does not work to sort the resulting chunk_ids, as their order
         # is determined by the consensus order that was created over all bigwig
         # files.
-        chrom_ids = np.array([self.chrom_to_chrom_id[key] for key in chromosome_keys])
-        mask = np.in1d(self.reference_df["start_chrom_ix"], chrom_ids)
-        filtered_array = self.reference_df[mask]
+        allowed_chrom_ids = np.array(
+            [self.chrom_to_chrom_id[key] for key in chromosome_keys]
+        )
+        mask = np.in1d(self.reference_data["start_chrom_ix"], allowed_chrom_ids)
+        filtered_array = self.reference_data[mask]
         sort_indices = np.lexsort(
             (filtered_array["start_base"], filtered_array["start_chrom_ix"])
         )
@@ -270,7 +272,7 @@ class BigWig:
         )
         return self.store.get_offsets_and_sizes(np.sort(np.unique(right_index)))
 
-    def build_ncls_index(self) -> tuple[NCLS, pd.DataFrame]:
+    def build_ncls_index(self) -> tuple[NCLS, npt.NDArray[np.void]]:
         dtype = np.dtype(
             [
                 ("start_chrom_ix", "u4"),
@@ -378,7 +380,7 @@ class BigWig:
         chromosomes: Union[Sequence[int], npt.NDArray[np.int64]],
         positions: npt.NDArray[np.int64],
     ) -> npt.NDArray[np.int64]:
-        return positions + self.chromosome_offsets[chromosomes]
+        return positions + self.chromosome_offsets[chromosomes]  # type: ignore
 
     def _create_chrom_id_to_chrom_key(self) -> npt.NDArray[np.generic]:
         """Create a mapping from chrom_ids (5, 1, 3) to chrom

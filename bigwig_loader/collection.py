@@ -293,8 +293,8 @@ class BigWigCollection:
             ]
         )
         if padding:
-            intervals["start"] = intervals["start"].values.clip(padding) - padding
-            intervals["end"] = intervals["end"].values + padding
+            intervals["start"] = intervals["start"].values.clip(padding) - padding  # type: ignore
+            intervals["end"] = intervals["end"].values + padding  # type: ignore
         if merge:
             intervals = merge_interval_dataframe(
                 intervals, is_sorted=False, allow_gap=merge_allow_gap

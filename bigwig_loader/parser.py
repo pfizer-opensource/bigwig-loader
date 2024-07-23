@@ -387,12 +387,12 @@ class RTreeNode:
 def collect_leaf_nodes(
     file_object: BinaryIO, offset: Optional[int] = None
 ) -> np.typing.NDArray[np.void]:
-    return np.concatenate(_collect_leaf_nodes(file_object, offset))
+    return np.concatenate(_collect_leaf_nodes(file_object, offset))  # type: ignore
 
 
 def _collect_leaf_nodes(
     file_object: BinaryIO, offset: Optional[int] = None
-) -> np.typing.NDArray[np.void]:
+) -> list[np.typing.NDArray[np.void]]:
     # Assumes the file object is already at the correct position
     if offset is not None:
         file_object.seek(offset, 0)
