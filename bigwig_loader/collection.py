@@ -15,7 +15,7 @@ import pandas as pd
 from bigwig_loader.bigwig import BigWig
 from bigwig_loader.gpu_decompressor import Decoder
 from bigwig_loader.intervals_to_values_gpu import intervals_to_values
-from bigwig_loader.memory_bank import MemoryBank
+from bigwig_loader.memory_bank_cufile import CuFileMemoryBank as MemoryBank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
 from bigwig_loader.path import interpret_path
 from bigwig_loader.path import map_path_to_value
@@ -169,7 +169,7 @@ class BigWigCollection:
             bigwig_ids.extend([bigwig.id] * len(offsets))
             # read chunks into preallocated memory
             self.memory_bank.add_many(
-                bigwig.store._fh,
+                bigwig.store.cufile_handle,
                 offsets,
                 sizes,
                 skip_bytes=2,
@@ -177,9 +177,9 @@ class BigWigCollection:
 
         # bring the gpu
         bigwig_ids = cp.asarray(bigwig_ids, dtype=cp.uint32)
-        gpu_byte_array, comp_chunks, compressed_chunk_sizes = self.memory_bank.to_gpu()
+        comp_chunk_pointers, compressed_chunk_sizes = self.memory_bank.to_gpu()
         _, start, end, value, n_rows_for_chunks = self.decoder.decode(
-            gpu_byte_array, comp_chunks, compressed_chunk_sizes, bigwig_ids=bigwig_ids
+            comp_chunk_pointers, compressed_chunk_sizes, bigwig_ids=bigwig_ids
         )
 
         logging.debug(

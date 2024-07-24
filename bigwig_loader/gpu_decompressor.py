@@ -70,7 +70,6 @@ class Decoder:
 
     def decode(
         self,
-        gpu_array: cp.ndarray,
         comp_chunks: cp.ndarray,
         comp_chunk_sizes: cp.ndarray,
         bigwig_ids: Optional[cp.ndarray] = None,

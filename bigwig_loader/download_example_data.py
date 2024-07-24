@@ -51,6 +51,7 @@ def checksum_md5(f: BinaryIO, *, chunk_size: int = 10 * 1024 * 1024) -> str:
 
 
 def get_example_bigwigs_files(bigwig_dir: Path = config.bigwig_dir) -> Path:
+    bigwig_dir.mkdir(parents=True, exist_ok=True)
     available_files = [pth.name for pth in get_bigwig_files_from_path(bigwig_dir)]
     if len(available_files) < 2:
         for fn, (url, md5) in EXAMPLE_FILES.items():

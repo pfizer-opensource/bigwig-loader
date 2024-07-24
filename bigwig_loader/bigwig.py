@@ -15,7 +15,7 @@ import pandas as pd
 from ncls import NCLS
 
 from bigwig_loader.gpu_decompressor import Decoder
-from bigwig_loader.memory_bank import MemoryBank
+from bigwig_loader.memory_bank_cufile import CuFileMemoryBank as MemoryBank
 from bigwig_loader.merge_intervals import merge_intervals
 from bigwig_loader.parser import BBIHeader
 from bigwig_loader.parser import ChromosomeTreeHeader
@@ -201,15 +201,14 @@ class BigWig:
         for i in range(0, len(offsets), batch_size):
             memory_bank.reset()
             memory_bank.add_many(
-                file_handle=self.store._fh,
+                file_handle=self.store.cufile_handle,
                 offsets=offsets[i : i + batch_size],
                 sizes=sizes[i : i + batch_size],
                 skip_bytes=2,
             )
-            gpu_byte_array, comp_chunks, compressed_chunk_sizes = memory_bank.to_gpu()
+            comp_chunk_pointers, compressed_chunk_sizes = memory_bank.to_gpu()
             chrom_id, start, end, value, n_rows_for_chunks = decoder.decode(
-                gpu_byte_array,
-                comp_chunks,
+                comp_chunk_pointers,
                 compressed_chunk_sizes,
             )
             chrom_id = cp.repeat(chrom_id, n_rows_for_chunks.get().tolist())

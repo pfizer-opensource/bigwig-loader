@@ -3,6 +3,7 @@ from typing import Union
 
 import numpy as np
 import numpy.typing as npt
+from kvikio.cufile import CuFile
 
 
 class BigWigStore:
@@ -14,6 +15,7 @@ class BigWigStore:
     ) -> None:
         self._filename = fn
         self._fh = open(fn, "rb", buffering=0)
+        self.cufile_handle = CuFile(fn, flags="r")
         self.chunk_offsets = chunk_offsets
         self.chunk_sizes = chunk_sizes
 
