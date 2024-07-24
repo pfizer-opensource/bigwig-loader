@@ -75,7 +75,7 @@ py_version = "38"
 force_single_line = true
 
 [[tool.mypy.overrides]]
-module = "cupy.*,zarr.*,pandas.*,numcodecs.*,fsspec.*,pyfaidx.*,ncls.*,bigwig_loader.merge_intervals.*,bigwig_loader.subtract_intervals.*,torch.*, kvikio.*"
+module = "cupy.*,zarr.*,pandas.*,numcodecs.*,fsspec.*,pyfaidx.*,ncls.*,bigwig_loader.merge_intervals.*,bigwig_loader.subtract_intervals.*,torch.*,kvikio.*"
 ignore_missing_imports = true
 
 [tool.bandit]
