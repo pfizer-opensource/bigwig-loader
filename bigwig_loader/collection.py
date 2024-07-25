@@ -15,7 +15,8 @@ import pandas as pd
 from bigwig_loader.bigwig import BigWig
 from bigwig_loader.gpu_decompressor import Decoder
 from bigwig_loader.intervals_to_values_gpu import intervals_to_values
-from bigwig_loader.memory_bank_cufile import CuFileMemoryBank as MemoryBank
+from bigwig_loader.memory_bank import MemoryBank
+from bigwig_loader.memory_bank import create_memory_bank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
 from bigwig_loader.path import interpret_path
 from bigwig_loader.path import map_path_to_value
@@ -39,6 +40,10 @@ class BigWigCollection:
             dict keys are mapped to paths.
         first_n_files: Optional, only consider the first n files (after sorting).
             Handy for debugging.
+        pinned_memory_size: size of pinned memory used to load compressed data to.
+        use_cufile: whether to use kvikio cuFile to directly load data from file to
+            GPU memory.
+
     """
 
     def __init__(
@@ -49,7 +54,9 @@ class BigWigCollection:
         scale: Optional[dict[Union[str | Path], Any]] = None,
         first_n_files: Optional[int] = None,
         pinned_memory_size: int = 10000,
+        use_cufile: bool = True,
     ):
+        self._use_cufile = use_cufile
         self.bigwig_paths = sorted(
             interpret_path(bigwig_path, file_extensions=file_extensions, crawl=crawl)
         )[:first_n_files]
@@ -61,7 +68,7 @@ class BigWigCollection:
         ]
 
         self.bigwigs = [
-            BigWig(path, id=i, scale=scaling_factor)
+            BigWig(path, id=i, scale=scaling_factor, use_cufile=use_cufile)
             for i, (path, scaling_factor) in enumerate(
                 zip(self.bigwig_paths, self._scaling_factors)
             )
@@ -114,7 +121,9 @@ class BigWigCollection:
 
     @cached_property
     def memory_bank(self) -> MemoryBank:
-        return MemoryBank(nbytes=self.pinned_memory_size, elastic=True)
+        return create_memory_bank(
+            nbytes=self.pinned_memory_size, elastic=True, use_cufile=self._use_cufile
+        )
 
     @cached_property
     def scaling_factors_cupy(self) -> cp.ndarray:
@@ -169,7 +178,7 @@ class BigWigCollection:
             bigwig_ids.extend([bigwig.id] * len(offsets))
             # read chunks into preallocated memory
             self.memory_bank.add_many(
-                bigwig.store.cufile_handle,
+                bigwig.store.file_handle,
                 offsets,
                 sizes,
                 skip_bytes=2,
