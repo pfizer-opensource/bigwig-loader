@@ -12,6 +12,7 @@ from kvikio.cufile import IOFuture
 
 class RAMMemoryBank:
     def __init__(self, nbytes: int = 10000, elastic: bool = True):
+        self._default_nbytes = nbytes
         self._mem = cp.cuda.alloc_pinned_memory(nbytes)
         self._view = memoryview(self._mem)
         # self._cpu_array =
@@ -32,6 +33,13 @@ class RAMMemoryBank:
         self.compressed_chunk_sizes = []
         self.compressed_chunk_offsets = [0]
         self.cumulative_n_chunks_per_file = []
+
+    def shrink(self) -> None:
+        """
+        Shrink the pinned memory to the original size.
+        """
+        self._mem = cp.cuda.alloc_pinned_memory(self._default_nbytes)
+        self._view = memoryview(self._mem)
 
     def increase_memory_size(self, new_size: int, generosity: float = 1.2) -> None:
         """
@@ -140,6 +148,7 @@ class RAMMemoryBank:
 
 class CuFileMemoryBank:
     def __init__(self, nbytes: int = 10000, elastic: bool = True):
+        self._default_nbytes = nbytes
         self._gpu_byte_array = cp.empty(nbytes, dtype=cp.uint8)
         self._current_file_handle: CuFile = None
         self.n_chunks = 0
@@ -161,6 +170,12 @@ class CuFileMemoryBank:
         self.cumulative_n_chunks_per_file = []
         self._promises = []
         self._gpu_byte_array *= 0
+
+    def shrink(self) -> None:
+        """
+        Shrink the pinned memory to the minimum size.
+        """
+        self._gpu_byte_array = cp.empty(self._default_nbytes, dtype=cp.uint8)
 
     def await_all_promises(self) -> list[int]:
         """

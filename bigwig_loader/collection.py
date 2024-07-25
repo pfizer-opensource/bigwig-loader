@@ -283,9 +283,14 @@ class BigWigCollection:
         Returns: pandas dataframe of intervals (chrom, start, end, value)
 
         """
-
-        intervals = pd.concat(
-            [
+        logging.info("Collecting intervals from BigWig files.")
+        interval_for_all_bigwigs = []
+        n_bigwigs = len(self.bigwigs)
+        for i, bw in enumerate(self.bigwigs):
+            logging.info(
+                f"Getting intervals for BigWig file {i}/{n_bigwigs}: {bw.path}"
+            )
+            interval_for_all_bigwigs.append(
                 bw.intervals(
                     include_chromosomes=include_chromosomes,
                     exclude_chromosomes=exclude_chromosomes,
@@ -298,20 +303,26 @@ class BigWigCollection:
                     decoder=self.decoder,
                     batch_size=batch_size,
                 )
-                for bw in self.bigwigs
-            ]
-        )
+            )
+
+        intervals = pd.concat(interval_for_all_bigwigs)
         if padding:
             intervals["start"] = intervals["start"].values.clip(padding) - padding  # type: ignore
             intervals["end"] = intervals["end"].values + padding  # type: ignore
         if merge:
+            logging.info(
+                "Merging intervals from different BigWig Files into one interval list."
+            )
             intervals = merge_interval_dataframe(
                 intervals, is_sorted=False, allow_gap=merge_allow_gap
             )
         if blacklist is not None:
+            logging.info("Subtracting blacklisted regions.")
             intervals = subtract_interval_dataframe(
                 intervals=intervals, blacklist=blacklist, buffer=blacklist_buffer
             )
+        self.memory_bank.shrink()
+
         return intervals
 
     def chromosomes(
