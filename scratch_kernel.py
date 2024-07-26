@@ -158,7 +158,7 @@ if __name__ == "__main__":
         ],
         dtype=cp.int32,
     )
-    idx = cp.asarray([[0], [1], [2], [4]], cp.int32)
+    idx = cp.asarray([[0], [1], [2], [3]], cp.int32)
     starts = cp.asarray([0, 4, 10, 24], cp.int32)
     sizes = cp.asarray([4, 6, 14, 2], cp.int32)
 
