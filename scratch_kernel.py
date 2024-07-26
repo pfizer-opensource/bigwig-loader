@@ -33,6 +33,7 @@ _searchsorted_code = """
     // `assume_increasing = False` parameter.
     // `digitize` allows increasing and decreasing arrays.
     bool inc = true;
+
     if (!assume_increasing && n_bins >= 2) {
         // In the case all the bins are nan the array is considered
         // to be decreasing in numpy
@@ -103,9 +104,16 @@ _searchsorted_code = """
 
 
 _searchsorted_kernel = _core.ElementwiseKernel(
-    "S x, raw T bins, int64 n_bins, bool side_is_right, " "bool assume_increasing",
+    "S x, S index, raw T starts, raw T sizes, raw T all_bins, bool side_is_right, "
+    "bool assume_increasing",
     "int64 y",
-    _searchsorted_code,
+    """
+    int start = starts[index];
+    int n_bins = sizes[index];
+    const T* bins = &all_bins[start];
+
+    """
+    + _searchsorted_code,
     name="cupy_searchsorted_kernel",
     preamble=_preamble + _hip_preamble,
 )
@@ -113,13 +121,52 @@ _searchsorted_kernel = _core.ElementwiseKernel(
 
 if __name__ == "__main__":
     side = "right"
-    background = cp.asarray([5, 10, 12, 18], dtype=cp.int32)
-    queries = cp.asarray([7, 9, 11], dtype=cp.int32)
+    background = cp.asarray(
+        [
+            5,
+            10,
+            12,
+            18,
+            1,
+            3,
+            5,
+            7,
+            9,
+            10,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            4,
+            100,
+        ],
+        dtype=cp.int32,
+    )
+    queries = cp.asarray(
+        [
+            [7, 9, 11],
+        ],
+        dtype=cp.int32,
+    )
+    idx = cp.asarray([[0], [1], [2], [4]], cp.int32)
+    starts = cp.asarray([0, 4, 10, 24], cp.int32)
+    sizes = cp.asarray([4, 6, 14, 2], cp.int32)
 
-    output = cp.zeros(queries.shape, dtype=cp.int64)
+    output = cp.zeros((4, 3), dtype=cp.int64)
 
     _searchsorted_kernel(
-        queries, background, background.size, side == "right", True, output
+        queries, idx, starts, sizes, background, side == "right", True, output
     )
 
     print(output)
+    print(output + starts[cp.newaxis, :].transpose())
