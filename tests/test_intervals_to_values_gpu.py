@@ -1,6 +1,6 @@
 import cupy as cp
 
-from bigwig_loader.intervals_to_values_gpu import intervals_to_values
+from bigwig_loader.intervals_to_values_multitrack import intervals_to_values
 
 
 def test_get_values_from_intervals() -> None:

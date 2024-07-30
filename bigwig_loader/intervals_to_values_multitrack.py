@@ -33,8 +33,33 @@ def intervals_to_values(
     sizes: cp.ndarray | None = None,
     window_size: int = 1,
 ) -> cp.ndarray:
+    """
+    This function converts intervals to values. It can do this for multiple tracks at once.
+    When multiple tracks are given, track_starts, track_ends and track_values are expected
+    to be concatenated arrays of the individual tracks. The sizes array is used to indicate
+    where the individual tracks start and end.
+
+    When none of found_starts, found_ends or sizes are given, it is assumed that there is only
+    one track.
+
+
+    Args:
+        track_starts: array of length sum(sizes) with the start positions of the intervals
+        track_ends: array of length sum(sizes) with the end positions of the intervals
+        track_values: array of length sum(sizes) with the value for those intervals
+        query_starts: array of length batch_size with the (genomic) start positions of each batch element
+        query_ends: array of length batch_size with the (genomic) end positions of each batch element
+        out: array of size n_tracks x batch_size x sequence_length to store the output
+        found_starts: result of searchsorted (if precalculated). Indices into track_starts.
+        found_ends: result of searchsorted (if precalculated). Indices into track_ends.
+        sizes: number of elements in track_starts/track_ends/track_values for each track
+        window_size: size in basepairs to average over (default: 1)
+    Returns:
+        out: array of size n_tracks x batch_size x sequence_length
+
+    """
     if (found_starts is None or found_ends is None) and sizes is None:
-        raise ValueError("Either found_starts and found_ends or sizes must be provided")
+        sizes = cp.asarray([len(track_ends)], dtype=track_starts.dtype)
 
     if found_starts is None or found_ends is None:
         found_starts = searchsorted(
