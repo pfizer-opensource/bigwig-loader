@@ -14,7 +14,7 @@ import numpy.typing as npt
 import pandas as pd
 from ncls import NCLS
 
-from bigwig_loader.gpu_decompressor import Decoder
+from bigwig_loader.decompressor import Decoder
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.memory_bank import create_memory_bank
 from bigwig_loader.merge_intervals import merge_intervals

@@ -13,8 +13,8 @@ import numpy.typing as npt
 import pandas as pd
 
 from bigwig_loader.bigwig import BigWig
-from bigwig_loader.gpu_decompressor import Decoder
-from bigwig_loader.intervals_to_values_multitrack import intervals_to_values
+from bigwig_loader.decompressor import Decoder
+from bigwig_loader.intervals_to_values import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.memory_bank import create_memory_bank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
