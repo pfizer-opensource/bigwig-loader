@@ -14,12 +14,13 @@ import pandas as pd
 
 from bigwig_loader.bigwig import BigWig
 from bigwig_loader.gpu_decompressor import Decoder
-from bigwig_loader.intervals_to_values_gpu import intervals_to_values
+from bigwig_loader.intervals_to_values_multitrack import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.memory_bank import create_memory_bank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
 from bigwig_loader.path import interpret_path
 from bigwig_loader.path import map_path_to_value
+from bigwig_loader.searchsorted import searchsorted
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import chromosome_sort
 
@@ -198,24 +199,36 @@ class BigWigCollection:
             f"Cupy default memory pool:{ cp.get_default_memory_pool().used_bytes() / 1024} kB"
         )
 
-        chunk_row_numbers = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
-        i = 0
-        for n_chunks, partial_out in zip(n_chunks_per_bigwig, out):
-            bigwig_end = i + n_chunks
+        bigwig_starts = cp.pad(
+            cp.cumsum(cp.asarray(n_chunks_per_bigwig, dtype=cp.uint32)), (1, 0)
+        )
+        chunk_starts = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
+        bigwig_starts = chunk_starts[bigwig_starts]
+        sizes = bigwig_starts[1:] - bigwig_starts[:-1]
 
-            row_number_start = chunk_row_numbers[i]
-            row_number_end = chunk_row_numbers[bigwig_end]
+        sizes = sizes.astype(cp.uint32)
+        abs_end = cp.asarray(abs_end, dtype=cp.uint32)
+        abs_start = cp.asarray(abs_start, dtype=cp.uint32)
 
-            intervals_to_values(
-                track_starts=start[row_number_start:row_number_end],
-                track_ends=end[row_number_start:row_number_end],
-                track_values=value[row_number_start:row_number_end],
-                query_starts=cp.asarray(abs_start, dtype=cp.uint32),
-                query_ends=cp.asarray(abs_end, dtype=cp.uint32),
-                window_size=window_size,
-                out=partial_out,
-            )
-            i = bigwig_end
+        # n_tracks x n_queries
+        found_starts = searchsorted(
+            end, queries=abs_start, sizes=sizes, side="right", absolute_indices=True
+        )
+        found_ends = searchsorted(
+            start, queries=abs_end, sizes=sizes, side="left", absolute_indices=True
+        )
+
+        intervals_to_values(
+            track_starts=start,
+            track_ends=end,
+            track_values=value,
+            found_starts=found_starts,
+            found_ends=found_ends,
+            query_starts=abs_start,
+            query_ends=abs_end,
+            window_size=window_size,
+            out=out,
+        )
         batch = cp.transpose(out, (1, 0, 2))
         batch *= self.scaling_factors_cupy
         return batch

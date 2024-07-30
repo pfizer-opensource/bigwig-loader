@@ -27,9 +27,9 @@ _hip_preamble = r"""
 
 
 _searchsorted_kernel = _core.ElementwiseKernel(
-    "S x, S index, raw int64 starts, raw T sizes, raw T all_bins, bool side_is_right, "
+    "S x, S index, raw uint32 starts, raw T sizes, raw T all_bins, bool side_is_right, "
     "bool assume_increasing",
-    "int64 y",
+    "uint32 y",
     """
     int start = starts[index];
     int n_bins = sizes[index];
@@ -47,6 +47,7 @@ def searchsorted(
     queries: cp.ndarray,
     sizes: cp.ndarray,
     side: Literal["left", "right"] = "left",
+    absolute_indices: bool = True,
 ) -> cp.ndarray:
     """
     This is a version of search sorted does the searchsorted operation on
@@ -61,18 +62,23 @@ def searchsorted(
         sizes: Sizes of the subarrays.
         side: If 'left', the index of the first suitable location found is given.
             If 'right', return the last such index.
+        absolute_indices: whether to give the indices with respect to the entire
+            array (True) or for the subarrays (False).
     Returns:
         And array of size n_subarrays x n_queries with insertion indices.
 
     """
 
-    start_indices = cp.pad(cp.cumsum(sizes, dtype=cp.int64), (1, 0))[:-1]
+    start_indices = cp.pad(cp.cumsum(sizes, dtype=cp.uint32), (1, 0))[:-1]
     n_subarrays = len(sizes)
     n_queries = len(queries)
     idx = cp.arange(n_subarrays, dtype=queries.dtype)[:, cp.newaxis]
     queries = queries[cp.newaxis, :]
-    output = cp.zeros((n_subarrays, n_queries), dtype=cp.int64)
+    output = cp.zeros((n_subarrays, n_queries), dtype=cp.uint32)
 
-    return _searchsorted_kernel(
+    result = _searchsorted_kernel(
         queries, idx, start_indices, sizes, array, side == "right", True, output
     )
+    if absolute_indices:
+        return result + start_indices[:, cp.newaxis]
+    return result
