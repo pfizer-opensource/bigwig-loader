@@ -1,6 +1,24 @@
 import cupy as cp
+import pytest
 
 from bigwig_loader.intervals_to_values import intervals_to_values
+
+
+def test_throw_exception_when_queried_intervals_are_of_different_lengths() -> None:
+    """All query_ends - query_starts should have the same
+    length. Otherwise, ValueError should be raised.
+    """
+    track_starts = cp.asarray([1, 2, 3], dtype=cp.int32)
+    track_ends = cp.asarray([2, 3, 4], dtype=cp.int32)
+    track_values = cp.asarray([1.0, 1.0, 1.0], dtype=cp.dtype("f4"))
+    query_starts = cp.asarray([2, 2], dtype=cp.int32)
+    query_ends = cp.asarray([4, 5], dtype=cp.int32)
+    reserved = cp.zeros((2, 2), dtype=cp.float32)
+
+    with pytest.raises(ValueError):
+        intervals_to_values(
+            track_starts, track_ends, track_values, query_starts, query_ends, reserved
+        )
 
 
 def test_get_values_from_intervals() -> None:

@@ -48,46 +48,49 @@ void intervals_to_values(
 			}
 		}
 	} else {
-		if (i < batch_size) {
-			int found_start_index = found_starts[i];
-			int found_end_index = found_ends[i];
-			int query_start = query_starts[batch_index];
-			int query_end = query_ends[batch_index];
 
-			int cursor = found_start_index;
-			int window_index = 0;
-			float summation = 0.0f;
+		int track_index = i / batch_size;
 
-			int reduced_dim = sequence_length / window_size;
+		int found_start_index = found_starts[i];
+		int found_end_index = found_ends[i];
+		int query_start = query_starts[batch_index];
+		int query_end = query_ends[batch_index];
 
-			while (cursor < found_end_index && window_index < reduced_dim) {
-				int window_start = window_index * window_size;
-				int window_end = window_start + window_size;
+		int cursor = found_start_index;
+		int window_index = 0;
+		float summation = 0.0f;
 
-				int interval_start = track_starts[cursor];
-				int interval_end = track_ends[cursor];
+		int reduced_dim = sequence_length / window_size;
 
-				int start_index = max(interval_start - query_start, 0);
-				int end_index = min(interval_end, query_end) - query_start;
+		while (cursor < found_end_index && window_index < reduced_dim) {
+			int window_start = window_index * window_size;
+			int window_end = window_start + window_size;
 
-				if (start_index >= window_end) {
-					window_index += 1;
-					continue;
-				}
+			int interval_start = track_starts[cursor];
+			int interval_end = track_ends[cursor];
 
-				int number = min(window_end, end_index) - max(window_start, start_index);
+			int start_index = max(interval_start - query_start, 0);
+			int end_index = min(interval_end, query_end) - query_start;
 
-				summation += number * track_values[cursor];
+			if (start_index >= window_end) {
+				out[i * reduced_dim + window_index] = summation / window_size;
+				summation = 0.0f;
+				window_index += 1;
+				continue;
+			}
 
-				if (end_index >= window_end || cursor + 1 >= found_end_index) {
-					out[i * reduced_dim + window_index] = summation / window_size;
-					summation = 0.0f;
-					window_index += 1;
-				}
+			int number = min(window_end, end_index) - max(window_start, start_index);
 
-				if (end_index < window_end) {
-					cursor += 1;
-				}
+			summation += number * track_values[cursor];
+
+			if (end_index >= window_end || cursor + 1 >= found_end_index) {
+				out[i * reduced_dim + window_index] = summation / window_size;
+				summation = 0.0f;
+				window_index += 1;
+			}
+
+			if (end_index < window_end) {
+				cursor += 1;
 			}
 		}
 	}

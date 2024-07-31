@@ -27,7 +27,7 @@ def intervals_to_values(
     track_values: cp.ndarray,
     query_starts: cp.ndarray,
     query_ends: cp.ndarray,
-    out: cp.ndarray,
+    out: cp.ndarray | None = None,
     found_starts: cp.ndarray | None = None,
     found_ends: cp.ndarray | None = None,
     sizes: cp.ndarray | None = None,
@@ -41,6 +41,9 @@ def intervals_to_values(
 
     When none of found_starts, found_ends or sizes are given, it is assumed that there is only
     one track.
+
+    When the sequence length is not a multiple of window_size, the output length will
+    be sequence_length // window_size, ignoring the last "incomplete" window.
 
 
     Args:
@@ -58,10 +61,16 @@ def intervals_to_values(
         out: array of size n_tracks x batch_size x sequence_length
 
     """
+    if cp.unique(query_ends - query_starts).size != 1:
+        raise ValueError("All queried intervals should have the same length.")
+    sequence_length = (query_ends[0] - query_starts[0]).item()
+
     if (found_starts is None or found_ends is None) and sizes is None:
-        sizes = cp.asarray([len(track_ends)], dtype=track_starts.dtype)
+        # just one size, which is the length of the entire track_starts/tracks_ends/tracks_values
+        sizes = cp.asarray([len(track_starts)], dtype=track_starts.dtype)
 
     if found_starts is None or found_ends is None:
+        # n_subarrays x n_queries
         found_starts = searchsorted(
             track_ends,
             queries=query_starts,
@@ -76,10 +85,13 @@ def intervals_to_values(
             side="left",
             absolute_indices=True,
         )
-
-    out *= _zero
-
-    sequence_length = (query_ends[0] - query_starts[0]).item()
+    if out is None:
+        out = cp.zeros(
+            (found_starts.shape[0], len(query_starts), sequence_length // window_size),
+            dtype=cp.float32,
+        )
+    else:
+        out *= _zero
 
     max_number_intervals = min(
         sequence_length, (found_ends - found_starts).max().item()
@@ -131,9 +143,10 @@ def get_grid_and_block_size(n_threads: int) -> tuple[int, int]:
 
 
 def kernel_in_python_with_window(
-    grid_size: int,
-    block_size: int,
+    grid_size: tuple[int],
+    block_size: tuple[int],
     args: tuple[
+        cp.ndarray,
         cp.ndarray,
         cp.ndarray,
         cp.ndarray,
@@ -158,81 +171,128 @@ def kernel_in_python_with_window(
         track_starts,
         track_ends,
         track_values,
+        num_tracks,
         batch_size,
         sequence_length,
         max_number_intervals,
-        _,
         window_size,
+        out,
     ) = args
+
+    _grid_size = grid_size[0]
+    _block_size = block_size[0]
 
     query_starts = query_starts.get().tolist()
     query_ends = query_ends.get().tolist()
 
-    found_starts = found_starts.get().tolist()
-    found_ends = found_ends.get().tolist()
+    # flattening this because that's how we get it in cuda
+    found_starts = found_starts.flatten().get().tolist()
+    found_ends = found_ends.flatten().get().tolist()
+
     track_starts = track_starts.get().tolist()
     track_ends = track_ends.get().tolist()
     track_values = track_values.get().tolist()
 
-    n_threads = grid_size * block_size
+    n_threads = _grid_size * _block_size
+
+    print(n_threads)
 
     # this should be integer
     reduced_dim = sequence_length // window_size
+    print("sequence_length")
+    print(sequence_length)
+    print("reduced_dim")
+    print(reduced_dim)
 
-    out = [0.0] * reduced_dim * batch_size
+    out_vector = [0.0] * reduced_dim * batch_size * num_tracks
 
     for thread in range(n_threads):
-        i = thread
+        batch_index = thread % batch_size
+        track_index = (thread // batch_size) % num_tracks
+        i = thread % (batch_size * num_tracks)
 
-        if i < batch_size:
-            found_start_index = found_starts[i]
-            found_end_index = found_ends[i]
-            query_start = query_starts[i]
-            query_end = query_ends[i]
+        print("\n\n\n######")
+        print(f"NEW thread {thread}")
+        print("batch_index", batch_index)
+        print("track_index", track_index)
+        print("i", i)
 
-            cursor = found_start_index
-            window_index = 0
-            summation = 0
+        # if i < batch_size * num_tracks:
+        found_start_index = found_starts[i]
+        found_end_index = found_ends[i]
+        query_start = query_starts[batch_index]
+        query_end = query_ends[batch_index]
 
-            while cursor < found_end_index and window_index < reduced_dim:
-                window_start = window_index * window_size
-                window_end = window_start + window_size
+        cursor = found_start_index
+        window_index = 0
+        summation = 0
 
-                interval_start = track_starts[cursor]
-                interval_end = track_ends[cursor]
+        # cursor moves through the rows of the bigwig file
+        # window_index moves through the sequence
 
-                start_index = max(interval_start - query_start, 0)
-                end_index = min(interval_end, query_end) - query_start
+        while cursor < found_end_index and window_index < reduced_dim:
+            print("-----")
+            print("cursor:", cursor)
+            window_start = window_index * window_size
+            window_end = window_start + window_size
+            print(f"working on values in output window {window_start} - {window_end}")
+            print(
+                f"Corresponding to the genomic loc   {query_start + window_start} - {query_start + window_end}"
+            )
 
-                if start_index >= window_end:
-                    window_index += 1
-                    continue
+            interval_start = track_starts[cursor]
+            interval_end = track_ends[cursor]
 
-                number = min(window_end, end_index) - max(window_start, start_index)
+            print("bigwig interval_start", "bigwig interval_end", "bigwig value")
+            print(interval_start, interval_end, track_values[cursor])
 
-                summation += number * track_values[cursor]
-                print("-----")
-                print("window_index", "number", "summation")
-                print(window_index, number, summation)
-                print("interval_start", "interval_end", "value")
-                print(interval_start, interval_end, track_values[cursor])
+            start_index = max(interval_start - query_start, 0)
+            end_index = min(interval_end, query_end) - query_start
+            print("start index", start_index)
 
-                print("end_index", "window_end")
-                print(end_index, window_end)
+            if start_index >= window_end:
+                print("CONTINUE")
+                out_vector[i * reduced_dim + window_index] = summation / window_size
+                summation = 0
+                window_index += 1
+                continue
 
-                # calculate average, reset summation and move to next window
-                if end_index >= window_end or cursor + 1 >= found_end_index:
-                    print("calculate average, reset summation and move to next window")
-                    out[i * reduced_dim + window_index] = summation / window_size
-                    summation = 0
-                    window_index += 1
-                # move cursor
-                if end_index < window_end:
-                    print("move cursor")
-                    cursor += 1
+            number = min(window_end, end_index) - max(window_start, start_index)
 
-    out = cp.reshape(cp.asarray(out), (batch_size, reduced_dim))
-    return out
+            print(
+                f"Add {number} x {track_values[cursor]} = {number * track_values[cursor]} to summation"
+            )
+            summation += number * track_values[cursor]
+            print(f"Summation = {summation}")
+
+            print("end_index", "window_end")
+            print(end_index, window_end)
+
+            # calculate average, reset summation and move to next window
+            if end_index >= window_end or cursor + 1 >= found_end_index:
+                if end_index >= window_end:
+                    print(
+                        "end_index >= window_end \t\t calculate average, reset summation and move to next window"
+                    )
+                else:
+                    print(
+                        "cursor + 1 >= found_end_index \t\t calculate average, reset summation and move to next window"
+                    )
+                out_vector[i * reduced_dim + window_index] = summation / window_size
+                summation = 0
+                window_index += 1
+            # move cursor
+            if end_index < window_end:
+                print("move cursor")
+                cursor += 1
+            print("current out state:", out_vector)
+            print(
+                cp.reshape(
+                    cp.asarray(out_vector), (num_tracks, batch_size, reduced_dim)
+                )
+            )
+
+    return cp.reshape(cp.asarray(out_vector), (num_tracks, batch_size, reduced_dim))
 
 
 def kernel_in_python(
