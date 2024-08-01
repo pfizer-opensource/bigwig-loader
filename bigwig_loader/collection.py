@@ -161,7 +161,6 @@ class BigWigCollection:
         cp.ndarray,
         cp.ndarray,
         cp.ndarray,
-        cp.ndarray,
     ]:
         memory_bank.reset()
 
@@ -202,7 +201,6 @@ class BigWigCollection:
             start_data,
             end_data,
             value_data,
-            comp_chunk_pointers,
             n_chunks_per_bigwig,
             n_rows_for_chunks,
         )
@@ -246,7 +244,6 @@ class BigWigCollection:
             start_data,
             end_data,
             value_data,
-            comp_chunk_pointers,
             n_chunks_per_bigwig,
             n_rows_for_chunks,
         ) = self.batch_load(
