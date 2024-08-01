@@ -153,15 +153,7 @@ class BigWigCollection:
         start: Union[Sequence[int], npt.NDArray[np.int64]],
         end: Union[Sequence[int], npt.NDArray[np.int64]],
         memory_bank: MemoryBank,
-    ) -> tuple[
-        cp.ndarray,
-        cp.ndarray,
-        cp.ndarray,
-        cp.ndarray,
-        cp.ndarray,
-        cp.ndarray,
-        cp.ndarray,
-    ]:
+    ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray,]:
         memory_bank.reset()
 
         abs_start = self.make_positions_global(chromosomes, start)
@@ -195,14 +187,17 @@ class BigWigCollection:
             comp_chunk_pointers, compressed_chunk_sizes, bigwig_ids=bigwig_ids
         )
 
+        bigwig_starts = cp.pad(cp.cumsum(n_chunks_per_bigwig), (1, 0))
+        chunk_starts = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
+        bigwig_start_indices = chunk_starts[bigwig_starts]
+
         return (
             abs_start,
             abs_end,
             start_data,
             end_data,
             value_data,
-            n_chunks_per_bigwig,
-            n_rows_for_chunks,
+            bigwig_start_indices,
         )
 
     def batch_searchsorted(
@@ -211,14 +206,9 @@ class BigWigCollection:
         end_data: cp.ndarray,
         abs_start: cp.ndarray,
         abs_end: cp.ndarray,
-        n_chunks_per_bigwig: cp.ndarray,
-        n_rows_for_chunks: cp.ndarray,
+        bigwig_start_indices: cp.ndarray,
     ) -> tuple[cp.ndarray, cp.ndarray]:
-        bigwig_starts = cp.pad(cp.cumsum(n_chunks_per_bigwig), (1, 0))
-        chunk_starts = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
-        bigwig_starts = chunk_starts[bigwig_starts]
-        sizes = bigwig_starts[1:] - bigwig_starts[:-1]
-
+        sizes = bigwig_start_indices[1:] - bigwig_start_indices[:-1]
         sizes = sizes.astype(cp.uint32)
 
         return interval_searchsorted(
@@ -244,19 +234,13 @@ class BigWigCollection:
             start_data,
             end_data,
             value_data,
-            n_chunks_per_bigwig,
-            n_rows_for_chunks,
+            bigwig_start_indices,
         ) = self.batch_load(
             chromosomes=chromosomes, start=start, end=end, memory_bank=self.memory_bank
         )
 
         found_starts, found_ends = self.batch_searchsorted(
-            start_data,
-            end_data,
-            abs_start,
-            abs_end,
-            n_chunks_per_bigwig,
-            n_rows_for_chunks,
+            start_data, end_data, abs_start, abs_end, bigwig_start_indices
         )
 
         print("sssssss")
