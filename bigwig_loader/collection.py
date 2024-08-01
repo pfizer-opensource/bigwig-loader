@@ -147,24 +147,23 @@ class BigWigCollection:
             self._out = cp.zeros(shape, dtype=cp.float32)
         return self._out
 
-    def get_batch(
+    def batch_load(
         self,
         chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
         start: Union[Sequence[int], npt.NDArray[np.int64]],
         end: Union[Sequence[int], npt.NDArray[np.int64]],
-        window_size: int = 1,
-        out: Optional[cp.ndarray] = None,
-    ) -> cp.ndarray:
-        self.memory_bank.reset()
-
-        if (end[0] - start[0]) % window_size:
-            raise ValueError(
-                f"Sequence length {end[0] - start[0]} is not divisible by window size {window_size}"
-            )
-
-        if out is None:
-            sequence_length = (end[0] - start[0]) // window_size
-            out = self._get_out_tensor(len(start), sequence_length)
+        memory_bank: MemoryBank,
+    ) -> tuple[
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+    ]:
+        memory_bank.reset()
 
         abs_start = self.make_positions_global(chromosomes, start)
         abs_end = self.make_positions_global(chromosomes, end)
@@ -185,43 +184,97 @@ class BigWigCollection:
                 skip_bytes=2,
             )
 
+        abs_end = cp.asarray(abs_end, dtype=cp.uint32)
+        abs_start = cp.asarray(abs_start, dtype=cp.uint32)
+
         # bring the gpu
         bigwig_ids = cp.asarray(bigwig_ids, dtype=cp.uint32)
+        n_chunks_per_bigwig = cp.asarray(n_chunks_per_bigwig, dtype=cp.uint32)
+
         comp_chunk_pointers, compressed_chunk_sizes = self.memory_bank.to_gpu()
-        _, start, end, value, n_rows_for_chunks = self.decoder.decode(
+        _, start_data, end_data, value_data, n_rows_for_chunks = self.decoder.decode(
             comp_chunk_pointers, compressed_chunk_sizes, bigwig_ids=bigwig_ids
         )
 
-        logging.debug(
-            f"decompressed array sizes {len(start), len(end), len(value), len(n_rows_for_chunks), len(bigwig_ids)}"
-        )
-        logging.debug(
-            f"Cupy default memory pool:{ cp.get_default_memory_pool().used_bytes() / 1024} kB"
+        return (
+            abs_start,
+            abs_end,
+            start_data,
+            end_data,
+            value_data,
+            comp_chunk_pointers,
+            n_chunks_per_bigwig,
+            n_rows_for_chunks,
         )
 
-        bigwig_starts = cp.pad(
-            cp.cumsum(cp.asarray(n_chunks_per_bigwig, dtype=cp.uint32)), (1, 0)
-        )
+    def batch_searchsorted(
+        self,
+        start_data: cp.ndarray,
+        end_data: cp.ndarray,
+        abs_start: cp.ndarray,
+        abs_end: cp.ndarray,
+        n_chunks_per_bigwig: cp.ndarray,
+        n_rows_for_chunks: cp.ndarray,
+    ) -> tuple[cp.ndarray, cp.ndarray]:
+        bigwig_starts = cp.pad(cp.cumsum(n_chunks_per_bigwig), (1, 0))
         chunk_starts = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
         bigwig_starts = chunk_starts[bigwig_starts]
         sizes = bigwig_starts[1:] - bigwig_starts[:-1]
 
         sizes = sizes.astype(cp.uint32)
-        abs_end = cp.asarray(abs_end, dtype=cp.uint32)
-        abs_start = cp.asarray(abs_start, dtype=cp.uint32)
 
         # n_tracks x n_queries
         found_starts = searchsorted(
-            end, queries=abs_start, sizes=sizes, side="right", absolute_indices=True
+            end_data,
+            queries=abs_start,
+            sizes=sizes,
+            side="right",
+            absolute_indices=True,
         )
         found_ends = searchsorted(
-            start, queries=abs_end, sizes=sizes, side="left", absolute_indices=True
+            start_data, queries=abs_end, sizes=sizes, side="left", absolute_indices=True
         )
 
+        return found_starts, found_ends
+
+    def get_batch(
+        self,
+        chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
+        start: Union[Sequence[int], npt.NDArray[np.int64]],
+        end: Union[Sequence[int], npt.NDArray[np.int64]],
+        window_size: int = 1,
+        out: Optional[cp.ndarray] = None,
+    ) -> cp.ndarray:
+        (
+            abs_start,
+            abs_end,
+            start_data,
+            end_data,
+            value_data,
+            comp_chunk_pointers,
+            n_chunks_per_bigwig,
+            n_rows_for_chunks,
+        ) = self.batch_load(
+            chromosomes=chromosomes, start=start, end=end, memory_bank=self.memory_bank
+        )
+
+        found_starts, found_ends = self.batch_searchsorted(
+            start_data,
+            end_data,
+            abs_start,
+            abs_end,
+            n_chunks_per_bigwig,
+            n_rows_for_chunks,
+        )
+
+        if out is None:
+            sequence_length = (end[0] - start[0]) // window_size
+            out = self._get_out_tensor(len(start), sequence_length)
+
         intervals_to_values(
-            track_starts=start,
-            track_ends=end,
-            track_values=value,
+            array_start=start_data,
+            array_end=end_data,
+            array_value=value_data,
             found_starts=found_starts,
             found_ends=found_ends,
             query_starts=abs_start,

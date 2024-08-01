@@ -4,7 +4,7 @@ from pathlib import Path
 
 import cupy as cp
 
-from bigwig_loader.searchsorted import searchsorted
+from bigwig_loader.searchsorted import interval_searchsorted
 
 CUDA_KERNEL_DIR = Path(__file__).parent.parent / "cuda_kernels"
 
@@ -22,9 +22,9 @@ cuda_kernel.compile()
 
 
 def intervals_to_values(
-    track_starts: cp.ndarray,
-    track_ends: cp.ndarray,
-    track_values: cp.ndarray,
+    array_start: cp.ndarray,
+    array_end: cp.ndarray,
+    array_value: cp.ndarray,
     query_starts: cp.ndarray,
     query_ends: cp.ndarray,
     out: cp.ndarray | None = None,
@@ -47,9 +47,9 @@ def intervals_to_values(
 
 
     Args:
-        track_starts: array of length sum(sizes) with the start positions of the intervals
-        track_ends: array of length sum(sizes) with the end positions of the intervals
-        track_values: array of length sum(sizes) with the value for those intervals
+        array_start: array of length sum(sizes) with the start positions of the intervals
+        array_end: array of length sum(sizes) with the end positions of the intervals
+        array_value: array of length sum(sizes) with the value for those intervals
         query_starts: array of length batch_size with the (genomic) start positions of each batch element
         query_ends: array of length batch_size with the (genomic) end positions of each batch element
         out: array of size n_tracks x batch_size x sequence_length to store the output
@@ -67,24 +67,19 @@ def intervals_to_values(
 
     if (found_starts is None or found_ends is None) and sizes is None:
         # just one size, which is the length of the entire track_starts/tracks_ends/tracks_values
-        sizes = cp.asarray([len(track_starts)], dtype=track_starts.dtype)
+        sizes = cp.asarray([len(array_start)], dtype=array_start.dtype)
 
     if found_starts is None or found_ends is None:
         # n_subarrays x n_queries
-        found_starts = searchsorted(
-            track_ends,
-            queries=query_starts,
-            sizes=sizes,
-            side="right",
+        found_starts, found_ends = interval_searchsorted(
+            array_start,
+            array_end,
+            query_starts,
+            query_ends,
+            sizes,
             absolute_indices=True,
         )
-        found_ends = searchsorted(
-            track_starts,
-            queries=query_ends,
-            sizes=sizes,
-            side="left",
-            absolute_indices=True,
-        )
+
     if out is None:
         out = cp.zeros(
             (found_starts.shape[0], len(query_starts), sequence_length // window_size),
@@ -118,9 +113,9 @@ def intervals_to_values(
             query_ends,
             found_starts,
             found_ends,
-            track_starts,
-            track_ends,
-            track_values,
+            array_start,
+            array_end,
+            array_value,
             num_tracks,
             batch_size,
             sequence_length,

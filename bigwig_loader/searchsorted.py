@@ -82,3 +82,34 @@ def searchsorted(
     if absolute_indices:
         return result + start_indices[:, cp.newaxis]
     return result
+
+
+def interval_searchsorted(
+    array_start: cp.ndarray,
+    array_end: cp.ndarray,
+    query_starts: cp.ndarray,
+    query_ends: cp.ndarray,
+    sizes: cp.ndarray,
+    absolute_indices: bool = True,
+) -> tuple[cp.ndarray, cp.ndarray]:
+    """This is a convenience function that does searchsorted on both
+    the start and end arrays and returns the results.
+    """
+
+    # n_tracks x n_queries
+    found_starts = searchsorted(
+        array_end,
+        queries=query_starts,
+        sizes=sizes,
+        side="right",
+        absolute_indices=True,
+    )
+    found_ends = searchsorted(
+        array_start,
+        queries=query_ends,
+        sizes=sizes,
+        side="left",
+        absolute_indices=absolute_indices,
+    )
+
+    return found_starts, found_ends
