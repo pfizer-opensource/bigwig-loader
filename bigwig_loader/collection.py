@@ -20,7 +20,7 @@ from bigwig_loader.memory_bank import create_memory_bank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
 from bigwig_loader.path import interpret_path
 from bigwig_loader.path import map_path_to_value
-from bigwig_loader.searchsorted import searchsorted
+from bigwig_loader.searchsorted import interval_searchsorted
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import chromosome_sort
 
@@ -223,19 +223,14 @@ class BigWigCollection:
 
         sizes = sizes.astype(cp.uint32)
 
-        # n_tracks x n_queries
-        found_starts = searchsorted(
-            end_data,
-            queries=abs_start,
+        return interval_searchsorted(
+            array_start=start_data,
+            array_end=end_data,
+            query_starts=abs_start,
+            query_ends=abs_end,
             sizes=sizes,
-            side="right",
             absolute_indices=True,
         )
-        found_ends = searchsorted(
-            start_data, queries=abs_end, sizes=sizes, side="left", absolute_indices=True
-        )
-
-        return found_starts, found_ends
 
     def get_batch(
         self,
@@ -266,6 +261,9 @@ class BigWigCollection:
             n_chunks_per_bigwig,
             n_rows_for_chunks,
         )
+
+        print("sssssss")
+        print(found_starts, found_ends)
 
         if out is None:
             sequence_length = (end[0] - start[0]) // window_size

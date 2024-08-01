@@ -102,7 +102,7 @@ def interval_searchsorted(
         queries=query_starts,
         sizes=sizes,
         side="right",
-        absolute_indices=True,
+        absolute_indices=absolute_indices,
     )
     found_ends = searchsorted(
         array_start,
