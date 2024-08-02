@@ -1,7 +1,6 @@
 from typing import Literal
 
 import cupy as cp
-from cupy import _core
 from cupy._sorting.search import _searchsorted_code
 
 _preamble = """
@@ -26,7 +25,7 @@ _hip_preamble = r"""
 """
 
 
-_searchsorted_kernel = _core.ElementwiseKernel(
+_searchsorted_kernel = cp.ElementwiseKernel(
     "S x, S index, raw uint32 starts, raw T sizes, raw T all_bins, bool side_is_right, "
     "bool assume_increasing",
     "uint32 y",
