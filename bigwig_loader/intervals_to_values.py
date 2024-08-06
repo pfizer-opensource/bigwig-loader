@@ -27,11 +27,11 @@ def intervals_to_values(
     array_value: cp.ndarray,
     query_starts: cp.ndarray,
     query_ends: cp.ndarray,
-    out: cp.ndarray | None = None,
     found_starts: cp.ndarray | None = None,
     found_ends: cp.ndarray | None = None,
     sizes: cp.ndarray | None = None,
     window_size: int = 1,
+    out: cp.ndarray | None = None,
 ) -> cp.ndarray:
     """
     This function converts intervals to values. It can do this for multiple tracks at once.
