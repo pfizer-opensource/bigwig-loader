@@ -62,7 +62,10 @@ def intervals_to_values(
 
     """
     if cp.unique(query_ends - query_starts).size != 1:
-        raise ValueError("All queried intervals should have the same length.")
+        raise ValueError(
+            "All queried intervals should have the same length. Found lengths: ",
+            cp.unique(query_ends - query_starts),
+        )
     sequence_length = (query_ends[0] - query_starts[0]).item()
 
     if (found_starts is None or found_ends is None) and sizes is None:

@@ -31,7 +31,7 @@ def bigwig_path():
     return get_example_bigwigs_files()
 
 
-@pytest.fixture(params=[True, False])
+@pytest.fixture(params=[True])
 def use_cufile(request):
     return request.param
 

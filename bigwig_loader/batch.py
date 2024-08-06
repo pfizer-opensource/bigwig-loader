@@ -17,82 +17,79 @@ from bigwig_loader.searchsorted import interval_searchsorted
 
 if TYPE_CHECKING:
     from bigwig_loader.bigwig import BigWig
-    from bigwig_loader.collection import BigWigCollection
-
-
-class Batch:
-    def __init__(
-        self,
-        chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
-        start: Union[Sequence[int], npt.NDArray[np.int64]],
-        end: Union[Sequence[int], npt.NDArray[np.int64]],
-        mask: Optional[Union[Sequence[bool], npt.NDArray[np.bool_]]] = None,
-    ):
-        self.chromosomes = chromosomes
-        self.start = start
-        self.end = end
-        self.mask = mask
-
-        # needed for io
-        self._memory_bank = None
-
-        # needed for decompress
-        self._comp_chunk_pointers = None
-        self._compressed_chunk_sizes = None
-        self._bigwig_ids = None
-
-        # needed for searchsorted
-        self._array_start = None
-        self._array_end = None
-        self._query_starts = None
-        self._query_ends = None
-        self._sizes = None
-
-        # needed for intervals_to_values
-        # self._array_start = None
-        # self._array_end = None
-        self._array_value = None
-        self._found_starts = None
-        self._found_ends = None
-        # self._query_starts = None
-        # self._query_ends = None
 
 
 class BatchProcessor:
-    _count = 0
-
-    def __init__(self, collection: "BigWigCollection", use_cufile: bool = True):
-        BatchProcessor._count += 1
-        print(f"BatchProcessor created {BatchProcessor._count} times")
-        self.collection = collection
+    def __init__(
+        self,
+        bigwigs: Sequence["BigWig"],
+        max_rows_per_chunk: int,
+        local_to_global: Callable[
+            [
+                Union[Sequence[str], npt.NDArray[np.generic]],
+                Union[Sequence[int], npt.NDArray[np.int64]],
+            ],
+            npt.NDArray[np.int64],
+        ],
+        local_chrom_ids_to_offset_matrix: cp.ndarray,
+        use_cufile: bool = True,
+    ):
+        self._bigwigs = bigwigs
         self._use_cufile = use_cufile
+        self._max_rows_per_chunk = max_rows_per_chunk
+        self._local_to_global = local_to_global
+        self._local_chrom_ids_to_offset_matrix = local_chrom_ids_to_offset_matrix
+        self._out: cp.ndarray = cp.zeros((len(self._bigwigs), 1, 1), dtype=cp.float32)
 
     @cached_property
     def decoder(self) -> Decoder:
         return Decoder(
-            max_rows_per_chunk=self.collection.max_rows_per_chunk,
-            max_uncompressed_chunk_size=self.collection.max_rows_per_chunk * 12 + 24,
-            chromosome_offsets=self.collection.local_chrom_ids_to_offset_matrix,
+            max_rows_per_chunk=self._max_rows_per_chunk,
+            max_uncompressed_chunk_size=self._max_rows_per_chunk * 12 + 24,
+            chromosome_offsets=self._local_chrom_ids_to_offset_matrix,
         )
 
     @cached_property
     def memory_bank(self) -> MemoryBank:
         return create_memory_bank(elastic=True, use_cufile=self._use_cufile)
 
-    def load(
+    def _get_out_tensor(self, batch_size: int, sequence_length: int) -> cp.ndarray:
+        """Resuses a reserved tensor if possible (when out shape is constant),
+        otherwise creates a new one.
+        args:
+            batch_size: batch size
+            sequence_length: length of genomic sequence
+         returns:
+            tensor of shape (number of bigwig files, batch_size, sequence_length)
+        """
+
+        shape = (len(self._bigwigs), batch_size, sequence_length)
+        if self._out.shape != shape:
+            self._out = cp.zeros(shape, dtype=cp.float32)
+        return self._out
+
+    def preprocess(
         self,
         chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
         start: Union[Sequence[int], npt.NDArray[np.int64]],
         end: Union[Sequence[int], npt.NDArray[np.int64]],
-    ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray,]:
-        return load_and_decode(
-            bigwigs=self.collection.bigwigs,
+    ) -> tuple[
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+        cp.ndarray,
+    ]:
+        return load_decode_search(
+            bigwigs=self._bigwigs,
             chromosomes=chromosomes,
             start=start,
             end=end,
             memory_bank=self.memory_bank,
             decoder=self.decoder,
-            local_to_global=self.collection.make_positions_global,
+            local_to_global=self._local_to_global,
         )
 
     def get_batch(
@@ -105,29 +102,26 @@ class BatchProcessor:
         out: Optional[cp.ndarray] = None,
     ) -> cp.ndarray:
         (
-            abs_start,
-            abs_end,
             start_data,
             end_data,
             value_data,
-            bigwig_start_indices,
-        ) = self.load(chromosomes=chromosomes, start=start, end=end)
-
-        sizes = bigwig_start_indices[1:] - bigwig_start_indices[:-1]
-        sizes = sizes.astype(cp.uint32)
-
-        found_starts, found_ends = interval_searchsorted(
-            array_start=start_data,
-            array_end=end_data,
-            query_starts=abs_start,
-            query_ends=abs_end,
-            sizes=sizes,
-            absolute_indices=True,
+            abs_start,
+            abs_end,
+            found_starts,
+            found_ends,
+        ) = load_decode_search(
+            bigwigs=self._bigwigs,
+            chromosomes=chromosomes,
+            start=start,
+            end=end,
+            memory_bank=self.memory_bank,
+            decoder=self.decoder,
+            local_to_global=self._local_to_global,
         )
 
-        # if out is None:
-        #     sequence_length = (end[0] - start[0]) // window_size
-        #     out = self._get_out_tensor(len(start), sequence_length)
+        if out is None:
+            sequence_length = (end[0] - start[0]) // window_size
+            out = self._get_out_tensor(len(start), sequence_length)
 
         out = intervals_to_values(
             array_start=start_data,
@@ -202,29 +196,6 @@ def load(
     )
 
 
-def decode(
-    decoder: Decoder,
-    bigwig_ids: cp.ndarray,
-    comp_chunk_pointers: cp.ndarray,
-    compressed_chunk_sizes: cp.ndarray,
-    n_chunks_per_bigwig: cp.ndarray,
-) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
-    _, start_data, end_data, value_data, n_rows_for_chunks = decoder.decode(
-        comp_chunk_pointers, compressed_chunk_sizes, bigwig_ids=bigwig_ids
-    )
-
-    bigwig_starts = cp.pad(cp.cumsum(n_chunks_per_bigwig), (1, 0))
-    chunk_starts = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
-    bigwig_start_indices = chunk_starts[bigwig_starts]
-
-    return (
-        start_data,
-        end_data,
-        value_data,
-        bigwig_start_indices,
-    )
-
-
 def load_and_decode(
     bigwigs: Sequence["BigWig"],
     chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
@@ -256,12 +227,11 @@ def load_and_decode(
         local_to_global=local_to_global,
     )
 
-    start_data, end_data, value_data, bigwig_start_indices = decode(
-        decoder,
-        bigwig_ids,
-        comp_chunk_pointers,
-        compressed_chunk_sizes,
-        n_chunks_per_bigwig,
+    start_data, end_data, value_data, bigwig_start_indices = decoder.decode_batch(
+        bigwig_ids=bigwig_ids,
+        comp_chunk_pointers=comp_chunk_pointers,
+        compressed_chunk_sizes=compressed_chunk_sizes,
+        n_chunks_per_bigwig=n_chunks_per_bigwig,
     )
 
     return (
@@ -271,4 +241,58 @@ def load_and_decode(
         end_data,
         value_data,
         bigwig_start_indices,
+    )
+
+
+def load_decode_search(
+    bigwigs: Sequence["BigWig"],
+    chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
+    start: Union[Sequence[int], npt.NDArray[np.int64]],
+    end: Union[Sequence[int], npt.NDArray[np.int64]],
+    memory_bank: MemoryBank,
+    local_to_global: Callable[
+        [
+            Union[Sequence[str], npt.NDArray[np.generic]],
+            Union[Sequence[int], npt.NDArray[np.int64]],
+        ],
+        npt.NDArray[np.int64],
+    ],
+    decoder: Decoder,
+) -> tuple[
+    cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray
+]:
+    (
+        abs_start,
+        abs_end,
+        start_data,
+        end_data,
+        value_data,
+        bigwig_start_indices,
+    ) = load_and_decode(
+        bigwigs=bigwigs,
+        chromosomes=chromosomes,
+        start=start,
+        end=end,
+        memory_bank=memory_bank,
+        local_to_global=local_to_global,
+        decoder=decoder,
+    )
+
+    found_starts, found_ends = interval_searchsorted(
+        array_start=start_data,
+        array_end=end_data,
+        query_starts=abs_start,
+        query_ends=abs_end,
+        start_indices=bigwig_start_indices,
+        absolute_indices=True,
+    )
+
+    return (
+        start_data,
+        end_data,
+        value_data,
+        abs_start,
+        abs_end,
+        found_starts,
+        found_ends,
     )

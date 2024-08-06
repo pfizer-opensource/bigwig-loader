@@ -12,15 +12,14 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from bigwig_loader.batch import BatchProcessor
 from bigwig_loader.bigwig import BigWig
 from bigwig_loader.decompressor import Decoder
-from bigwig_loader.intervals_to_values import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.memory_bank import create_memory_bank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
 from bigwig_loader.path import interpret_path
 from bigwig_loader.path import map_path_to_value
-from bigwig_loader.searchsorted import interval_searchsorted
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import chromosome_sort
 
@@ -84,9 +83,9 @@ class BigWigCollection:
             [bigwig.max_rows_per_chunk for bigwig in self.bigwigs]
         )
         self.pinned_memory_size = pinned_memory_size
-        self._out: cp.ndarray = cp.zeros((len(self), 1, 1), dtype=cp.float32)
 
         self.run_indexing()
+        self._batch_processor = None
 
     def run_indexing(self) -> None:
         for bigwig in self.bigwigs:
@@ -111,6 +110,8 @@ class BigWigCollection:
             del self.__dict__["memory_bank"]
         if "scaling_factors_cupy" in self.__dict__:
             del self.__dict__["scaling_factors_cupy"]
+        if "batch_processor" in self.__dict__:
+            del self.__dict__["batch_processor"]
 
     @cached_property
     def decoder(self) -> Decoder:
@@ -127,97 +128,19 @@ class BigWigCollection:
         )
 
     @cached_property
+    def batch_processor(self) -> BatchProcessor:
+        return BatchProcessor(
+            bigwigs=self.bigwigs,
+            max_rows_per_chunk=self.max_rows_per_chunk,
+            local_to_global=self.make_positions_global,
+            local_chrom_ids_to_offset_matrix=self.local_chrom_ids_to_offset_matrix,
+            use_cufile=self._use_cufile,
+        )
+
+    @cached_property
     def scaling_factors_cupy(self) -> cp.ndarray:
         return cp.asarray(self._scaling_factors, dtype=cp.float32).reshape(
             1, len(self._scaling_factors), 1
-        )
-
-    def _get_out_tensor(self, batch_size: int, sequence_length: int) -> cp.ndarray:
-        """Resuses a reserved tensor if possible (when out shape is constant),
-        otherwise creates a new one.
-        args:
-            batch_size: batch size
-            sequence_length: length of genomic sequence
-         returns:
-            tensor of shape (number of bigwig files, batch_size, sequence_length)
-        """
-
-        shape = (len(self), batch_size, sequence_length)
-        if self._out.shape != shape:
-            self._out = cp.zeros(shape, dtype=cp.float32)
-        return self._out
-
-    def batch_load(
-        self,
-        chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
-        start: Union[Sequence[int], npt.NDArray[np.int64]],
-        end: Union[Sequence[int], npt.NDArray[np.int64]],
-        memory_bank: MemoryBank,
-    ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray,]:
-        memory_bank.reset()
-
-        abs_start = self.make_positions_global(chromosomes, start)
-        abs_end = self.make_positions_global(chromosomes, end)
-
-        n_chunks_per_bigwig = []
-        bigwig_ids = []
-        for bigwig in self.bigwigs:
-            offsets, sizes = bigwig.get_batch_offsets_and_sizes_with_global_positions(
-                abs_start, abs_end
-            )
-            n_chunks_per_bigwig.append(len(offsets))
-            bigwig_ids.extend([bigwig.id] * len(offsets))
-            # read chunks into preallocated memory
-            self.memory_bank.add_many(
-                bigwig.store.file_handle,
-                offsets,
-                sizes,
-                skip_bytes=2,
-            )
-
-        abs_end = cp.asarray(abs_end, dtype=cp.uint32)
-        abs_start = cp.asarray(abs_start, dtype=cp.uint32)
-
-        # bring the gpu
-        bigwig_ids = cp.asarray(bigwig_ids, dtype=cp.uint32)
-        n_chunks_per_bigwig = cp.asarray(n_chunks_per_bigwig, dtype=cp.uint32)
-
-        comp_chunk_pointers, compressed_chunk_sizes = self.memory_bank.to_gpu()
-        _, start_data, end_data, value_data, n_rows_for_chunks = self.decoder.decode(
-            comp_chunk_pointers, compressed_chunk_sizes, bigwig_ids=bigwig_ids
-        )
-
-        bigwig_starts = cp.pad(cp.cumsum(n_chunks_per_bigwig), (1, 0))
-        chunk_starts = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
-        bigwig_start_indices = chunk_starts[bigwig_starts]
-
-        return (
-            abs_start,
-            abs_end,
-            start_data,
-            end_data,
-            value_data,
-            bigwig_start_indices,
-        )
-
-    def batch_searchsorted(
-        self,
-        start_data: cp.ndarray,
-        end_data: cp.ndarray,
-        abs_start: cp.ndarray,
-        abs_end: cp.ndarray,
-        bigwig_start_indices: cp.ndarray,
-    ) -> tuple[cp.ndarray, cp.ndarray]:
-        sizes = bigwig_start_indices[1:] - bigwig_start_indices[:-1]
-        sizes = sizes.astype(cp.uint32)
-
-        return interval_searchsorted(
-            array_start=start_data,
-            array_end=end_data,
-            query_starts=abs_start,
-            query_ends=abs_end,
-            sizes=sizes,
-            absolute_indices=True,
         )
 
     def get_batch(
@@ -228,42 +151,14 @@ class BigWigCollection:
         window_size: int = 1,
         out: Optional[cp.ndarray] = None,
     ) -> cp.ndarray:
-        (
-            abs_start,
-            abs_end,
-            start_data,
-            end_data,
-            value_data,
-            bigwig_start_indices,
-        ) = self.batch_load(
-            chromosomes=chromosomes, start=start, end=end, memory_bank=self.memory_bank
-        )
-
-        found_starts, found_ends = self.batch_searchsorted(
-            start_data, end_data, abs_start, abs_end, bigwig_start_indices
-        )
-
-        print("sssssss")
-        print(found_starts, found_ends)
-
-        if out is None:
-            sequence_length = (end[0] - start[0]) // window_size
-            out = self._get_out_tensor(len(start), sequence_length)
-
-        intervals_to_values(
-            array_start=start_data,
-            array_end=end_data,
-            array_value=value_data,
-            found_starts=found_starts,
-            found_ends=found_ends,
-            query_starts=abs_start,
-            query_ends=abs_end,
+        return self.batch_processor.get_batch(
+            chromosomes=chromosomes,
+            start=start,
+            end=end,
             window_size=window_size,
+            scaling_factors_cupy=self.scaling_factors_cupy,
             out=out,
         )
-        batch = cp.transpose(out, (1, 0, 2))
-        batch *= self.scaling_factors_cupy
-        return batch
 
     def make_positions_global(
         self,
