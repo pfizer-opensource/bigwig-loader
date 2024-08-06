@@ -44,7 +44,8 @@ _searchsorted_kernel = cp.ElementwiseKernel(
 def searchsorted(
     array: cp.ndarray,
     queries: cp.ndarray,
-    sizes: cp.ndarray,
+    sizes: cp.ndarray | None = None,
+    start_indices: cp.ndarray | None = None,
     side: Literal["left", "right"] = "left",
     absolute_indices: bool = True,
 ) -> cp.ndarray:
@@ -67,8 +68,8 @@ def searchsorted(
         And array of size n_subarrays x n_queries with insertion indices.
 
     """
+    start_indices, sizes = starts_and_sizes(start_indices, sizes)
 
-    start_indices = cp.pad(cp.cumsum(sizes, dtype=cp.uint32), (1, 0))[:-1]
     n_subarrays = len(sizes)
     n_queries = len(queries)
     idx = cp.arange(n_subarrays, dtype=queries.dtype)[:, cp.newaxis]
@@ -88,12 +89,15 @@ def interval_searchsorted(
     array_end: cp.ndarray,
     query_starts: cp.ndarray,
     query_ends: cp.ndarray,
-    sizes: cp.ndarray,
+    sizes: cp.ndarray | None = None,
+    start_indices: cp.ndarray | None = None,
     absolute_indices: bool = True,
 ) -> tuple[cp.ndarray, cp.ndarray]:
     """This is a convenience function that does searchsorted on both
     the start and end arrays and returns the results.
     """
+
+    start_indices, sizes = starts_and_sizes(start_indices, sizes)
 
     # n_tracks x n_queries
     found_starts = searchsorted(
@@ -112,3 +116,23 @@ def interval_searchsorted(
     )
 
     return found_starts, found_ends
+
+
+def starts_and_sizes(
+    starts: cp.ndarray | None, sizes: cp.ndarray | None
+) -> tuple[cp.ndarray, cp.ndarray]:
+    if starts is None and sizes is None:
+        raise ValueError("Either starts or sizes must be provided.")
+    elif starts is None:
+        starts = sizes_to_starts(sizes)
+    elif sizes is None:
+        sizes = starts_to_sizes(starts)
+    return starts, sizes
+
+
+def sizes_to_starts(sizes: cp.ndarray) -> cp.ndarray:
+    return cp.pad(cp.cumsum(sizes, dtype=cp.uint32), (1, 0))[:-1]
+
+
+def starts_to_sizes(starts: cp.ndarray) -> cp.ndarray:
+    return (starts[1:] - starts[:-1]).astype(cp.uint32)

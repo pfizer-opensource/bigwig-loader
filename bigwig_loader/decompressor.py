@@ -68,6 +68,44 @@ class Decoder:
 
         self.max_num_chunks = num_chunks
 
+    def decode_batch(
+        self,
+        bigwig_ids: cp.ndarray,
+        comp_chunk_pointers: cp.ndarray,
+        compressed_chunk_sizes: cp.ndarray,
+        n_chunks_per_bigwig: cp.ndarray,
+    ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
+        """
+        This is just a wrapper around the `decode` method that returns the decoded data in a more
+        convenient format, leaving out the number of rows per compressed chunk, but combining it
+        with the number of chunks for each bigwig file to return the mode convenient
+        bigwig_start_indices
+        Args:
+            bigwig_ids:
+            comp_chunk_pointers:
+            compressed_chunk_sizes:
+            n_chunks_per_bigwig:
+
+        Returns:tuple of 4: start_data, end_data, value_data, bigwig_start_indices,
+            where bigwig_start_indices are the indices where each bigwig file starts in
+            start_data, end_data, value_data
+
+        """
+        _, start_data, end_data, value_data, n_rows_for_chunks = self.decode(
+            comp_chunk_pointers, compressed_chunk_sizes, bigwig_ids=bigwig_ids
+        )
+
+        bigwig_starts = cp.pad(cp.cumsum(n_chunks_per_bigwig), (1, 0))
+        chunk_starts = cp.pad(cp.cumsum(n_rows_for_chunks), (1, 0))
+        bigwig_start_indices = chunk_starts[bigwig_starts]
+
+        return (
+            start_data,
+            end_data,
+            value_data,
+            bigwig_start_indices,
+        )
+
     def decode(
         self,
         comp_chunks: cp.ndarray,
