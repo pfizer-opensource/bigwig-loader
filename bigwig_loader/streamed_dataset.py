@@ -37,6 +37,7 @@ class WorkerContext:
         self.thread.start()
         self._collection = collection
         self._batch_processor: BatchProcessor | None = None
+        self._batch_count: int = 0
 
     #     )
     @property
@@ -56,14 +57,33 @@ class WorkerContext:
             self.ready.wait()  # Wait until the event is set
             self.ready.clear()  # Clear the event to wait for the next signal
             try:
-                with self.stream:
+                with self.stream as stream:
                     chrom, start, end = self.input_queue.get(timeout=1)
-                    result = self.batch_processor.preprocess(chrom, start, end)
+                    result = self.batch_processor.preprocess(
+                        chrom, start, end, stream=stream
+                    )
                     self.stream.synchronize()
                     self.output_queue.put((result, self))
                     self.input_queue.task_done()
             except queue.Empty:
                 raise StopIteration
+            except Exception as e:
+                print(f" worker {self.worker_id}; batch {self._batch_count}")
+                print(
+                    f" worker {self.worker_id}; batch {self._batch_count}",
+                    "chrom",
+                    chrom,
+                )
+                print(
+                    f" worker {self.worker_id}; batch {self._batch_count}",
+                    "start",
+                    start,
+                )
+                print(
+                    f" worker {self.worker_id}; batch {self._batch_count}", "end", end
+                )
+                raise e
+            self._batch_count += 1
 
     def join(self) -> None:
         self.thread.join()

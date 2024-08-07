@@ -74,6 +74,7 @@ class Decoder:
         comp_chunk_pointers: cp.ndarray,
         compressed_chunk_sizes: cp.ndarray,
         n_chunks_per_bigwig: cp.ndarray,
+        stream: Optional[cp.cuda.Stream] = None,
     ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
         """
         This is just a wrapper around the `decode` method that returns the decoded data in a more
@@ -92,7 +93,10 @@ class Decoder:
 
         """
         _, start_data, end_data, value_data, n_rows_for_chunks = self.decode(
-            comp_chunk_pointers, compressed_chunk_sizes, bigwig_ids=bigwig_ids
+            comp_chunk_pointers,
+            compressed_chunk_sizes,
+            bigwig_ids=bigwig_ids,
+            stream=stream,
         )
 
         bigwig_starts = cp.pad(cp.cumsum(n_chunks_per_bigwig), (1, 0))
@@ -111,6 +115,7 @@ class Decoder:
         comp_chunks: cp.ndarray,
         comp_chunk_sizes: cp.ndarray,
         bigwig_ids: Optional[cp.ndarray] = None,
+        stream: Optional[cp.cuda.Stream] = None,
     ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
         num_chunks = len(comp_chunks)
 
@@ -131,6 +136,9 @@ class Decoder:
 
         statuses = self.statuses[:num_chunks]
 
+        if stream is None:
+            stream = codec._stream
+
         codec._algo.decompress(
             comp_chunks,  # const void* const*
             comp_chunk_sizes,  # const size_t*
@@ -140,7 +148,7 @@ class Decoder:
             uncomp_chunk_sizes,
             actual_uncomp_chunk_sizes,
             statuses,
-            codec._stream,
+            stream,
         )
 
         chrom_ids, start, end, value, n_rows_for_chunks = self.post_process(

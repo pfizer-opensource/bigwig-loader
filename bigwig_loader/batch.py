@@ -73,6 +73,7 @@ class BatchProcessor:
         chromosomes: Union[Sequence[str], npt.NDArray[np.generic]],
         start: Union[Sequence[int], npt.NDArray[np.int64]],
         end: Union[Sequence[int], npt.NDArray[np.int64]],
+        stream: Optional[cp.cuda.Stream] = None,
     ) -> tuple[
         cp.ndarray,
         cp.ndarray,
@@ -90,6 +91,7 @@ class BatchProcessor:
             memory_bank=self.memory_bank,
             decoder=self.decoder,
             local_to_global=self._local_to_global,
+            stream=stream,
         )
 
     def get_batch(
@@ -210,6 +212,7 @@ def load_and_decode(
         npt.NDArray[np.int64],
     ],
     decoder: Decoder,
+    stream: Optional[cp.cuda.Stream] = None,
 ) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray]:
     (
         abs_start,
@@ -232,6 +235,7 @@ def load_and_decode(
         comp_chunk_pointers=comp_chunk_pointers,
         compressed_chunk_sizes=compressed_chunk_sizes,
         n_chunks_per_bigwig=n_chunks_per_bigwig,
+        stream=stream,
     )
 
     return (
@@ -258,6 +262,7 @@ def load_decode_search(
         npt.NDArray[np.int64],
     ],
     decoder: Decoder,
+    stream: Optional[cp.cuda.Stream] = None,
 ) -> tuple[
     cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray, cp.ndarray
 ]:
@@ -276,6 +281,7 @@ def load_decode_search(
         memory_bank=memory_bank,
         local_to_global=local_to_global,
         decoder=decoder,
+        stream=stream,
     )
 
     found_starts, found_ends = interval_searchsorted(

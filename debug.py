@@ -15,40 +15,35 @@ def main() -> None:
     df = pd.read_csv(config.example_positions, sep="\t")
     df = df[df["chr"].isin(collection.get_chromosomes_present_in_all_files())]
 
-    # def input_generator():
-    #     for i in range(1000):
-    #         batch = df.sample(10)
-    #         chrom, start, end = (
-    #             list(batch["chr"]),
-    #             list(batch["center"] - 500),
-    #             list(batch["center"] + 500),
-    #         )
-    #
-    #         yield (chrom, start, end)
     def input_generator() -> (
         Generator[tuple[list[str], list[int], list[int]], None, None]
     ):
-        chrom, start, end = (
-            list(df["chr"]),
-            list(df["center"] - 500),
-            list(df["center"] + 500),
-        )
-
         for i in range(1000):
-            yield (chrom[:10], start[:10], end[:10])
+            batch = df.sample(5)
+            batch = batch.sort_values(by=["chr", "center"])
+
+            chrom, start, end = (
+                list(batch["chr"]),
+                list(batch["center"] - 500),
+                list(batch["center"] + 500),
+            )
+            print(len(chrom), len(start), len(end))
+
+            yield (chrom, start, end)
 
     data_loader = StreamedDataloader(
         input_generator=input_generator(),
         collection=collection,
         num_threads=4,
-        queue_size=10,
+        queue_size=4,
     )
 
     for i, batch in enumerate(data_loader):
         print(i, batch)
-        if i == 10:
+        if i == 40:
             data_loader.stop()
             break
+    print("Done!")
 
 
 if __name__ == "__main__":
