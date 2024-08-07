@@ -18,8 +18,8 @@ def main() -> None:
     def input_generator() -> (
         Generator[tuple[list[str], list[int], list[int]], None, None]
     ):
-        for i in range(1000):
-            batch = df.sample(5)
+        while True:
+            batch = df.sample(20)
             batch = batch.sort_values(by=["chr", "center"])
 
             chrom, start, end = (
@@ -40,7 +40,7 @@ def main() -> None:
 
     for i, batch in enumerate(data_loader):
         print(i, batch)
-        if i == 40:
+        if i == 2000:
             data_loader.stop()
             break
     print("Done!")
