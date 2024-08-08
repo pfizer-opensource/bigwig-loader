@@ -1,5 +1,6 @@
 import queue
 import threading
+from typing import Generator
 from typing import Iterable
 from typing import Sequence
 
@@ -11,17 +12,17 @@ from bigwig_loader.batch import BatchProcessor
 from bigwig_loader.collection import BigWigCollection
 from bigwig_loader.intervals_to_values import intervals_to_values
 
+InputBatchType = tuple[
+    Sequence[str] | npt.NDArray[np.generic],
+    Sequence[int] | npt.NDArray[np.int64],
+    Sequence[int] | npt.NDArray[np.int64],
+]
+
 
 class WorkerContext:
     def __init__(
         self,
-        input_queue: queue.Queue[
-            tuple[
-                Sequence[str] | npt.NDArray[np.generic],
-                Sequence[int] | npt.NDArray[np.int64],
-                Sequence[int] | npt.NDArray[np.int64],
-            ]
-        ],
+        input_queue: queue.Queue[InputBatchType],
         output_queue: queue.Queue[tuple[cp.ndarray, "WorkerContext"]],
         stop_event: threading.Event,
         collection: BigWigCollection,
@@ -39,7 +40,6 @@ class WorkerContext:
         self._batch_processor: BatchProcessor | None = None
         self._batch_count: int = 0
 
-    #     )
     @property
     def batch_processor(self) -> BatchProcessor:
         if self._batch_processor is None:
@@ -66,7 +66,7 @@ class WorkerContext:
                     self.output_queue.put((result, self))
                     self.input_queue.task_done()
             except queue.Empty:
-                raise StopIteration
+                continue
             except Exception as e:
                 print(f" worker {self.worker_id}; batch {self._batch_count}")
                 print(
@@ -86,43 +86,35 @@ class WorkerContext:
             self._batch_count += 1
 
     def join(self) -> None:
+        self.stream.synchronize()
         self.thread.join()
 
 
 class StreamedDataloader:
     def __init__(
         self,
-        input_generator: Iterable[
-            tuple[
-                Sequence[str] | npt.NDArray[np.generic],
-                Sequence[int] | npt.NDArray[np.int64],
-                Sequence[int] | npt.NDArray[np.int64],
-            ]
-        ],
+        input_generator: Iterable[InputBatchType],
         collection: BigWigCollection,
         num_threads: int = 4,
         queue_size: int = 10,
+        slice_size: int | None = None,
+        window__size: int = 1,
     ):
-        self.data_generator = input_generator
+        self.input_generator = input_generator
         self.collection = collection
         self.num_threads = num_threads
         self.queue_size = queue_size
-        self.input_queue: queue.Queue[
-            tuple[
-                Sequence[str] | npt.NDArray[np.generic],
-                Sequence[int] | npt.NDArray[np.int64],
-                Sequence[int] | npt.NDArray[np.int64],
-            ]
-        ] = queue.Queue(
+        self.slice_size = slice_size
+        self.window_size = window__size
+        self.input_queue: queue.Queue[InputBatchType] = queue.Queue(
             maxsize=self.queue_size
         )  # Thread-safe input queue
-        self.output_queue: queue.Queue[
-            tuple[cp.ndarray, "WorkerContext"]
-        ] = queue.Queue(
+        self.output_queue: queue.Queue[tuple[cp.ndarray, WorkerContext]] = queue.Queue(
             maxsize=self.queue_size
         )  # Thread-safe output queue
         self.stop_event = threading.Event()
         self.workers: list[WorkerContext] = []
+        self.main_stream = cp.cuda.Stream(non_blocking=True)
         self._create_workers()
         self._out = None
 
@@ -137,58 +129,97 @@ class StreamedDataloader:
             )
             self.workers.append(worker)
 
-    def __iter__(self) -> "StreamedDataloader":
+    def __iter__(self) -> Iterable[cp.ndarray]:
         self.data_generator_thread = threading.Thread(target=self._feed_generator)
         self.data_generator_thread.start()
         for worker in self.workers:
             worker.ready.set()
-        return self
+        return self._generate_batches()
 
     def _feed_generator(self) -> None:
-        for data in self.data_generator:
+        for data in self.input_generator:
             self.input_queue.put(data)
             if self.stop_event.is_set():
                 break
 
-    def __next__(self) -> cp.ndarray:
+    def _generate_batches(self) -> Generator[cp.ndarray, None, None]:
         try:
-            result, worker = self.output_queue.get(timeout=30)
+            while True:
+                result, worker = self.output_queue.get(timeout=30)
 
-            (
-                start_data,
-                end_data,
-                value_data,
-                abs_start,
-                abs_end,
-                found_starts,
-                found_ends,
-            ) = result
+                (
+                    start_data,
+                    end_data,
+                    value_data,
+                    abs_start,
+                    abs_end,
+                    found_starts,
+                    found_ends,
+                ) = result
 
-            # Perform the last step in the main thread
-            final_data = intervals_to_values(
-                start_data,
-                end_data,
-                value_data,
-                abs_start,
-                abs_end,
-                found_starts,
-                found_ends,
-                out=self._out,
-            )
-            self.output_queue.task_done()
-            # just hang on to this data to
-            # reuse
-            self._out = final_data
-            # Signal the worker that it's ready for a new batch
-            worker.ready.set()
+                n_samples = len(abs_start)
+                slice_size = self._determine_slice_size(n_samples=n_samples)
 
-            batch = cp.transpose(final_data, (1, 0, 2))
-            if self.collection.scaling_factors_cupy is not None:
-                batch *= self.collection.scaling_factors_cupy
-            return batch
+                out = self._get_out_tensor(
+                    sequence_length=(abs_end[0] - abs_start[0]).item()
+                    // self.window_size,
+                    number_of_tracks=found_starts.shape[0],
+                    batch_size=slice_size,
+                )
 
+                for select in self._slices_objects(n_samples, slice_size):
+                    with self.main_stream as stream:
+                        stream.synchronize()
+
+                        value_matrix = intervals_to_values(
+                            array_start=start_data,
+                            array_end=end_data,
+                            array_value=value_data,
+                            query_starts=abs_start[select],
+                            query_ends=abs_end[select],
+                            found_starts=found_starts[:, select],
+                            found_ends=found_ends[:, select],
+                            window_size=self.window_size,
+                            out=out,
+                        )
+
+                        batch = cp.transpose(value_matrix, (1, 0, 2))
+                        if self.collection.scaling_factors_cupy is not None:
+                            batch *= self.collection.scaling_factors_cupy
+                        stream.synchronize()
+
+                    yield value_matrix
+
+                self.output_queue.task_done()
+                worker.ready.set()
         except queue.Empty:
-            raise StopIteration
+            self.stop_event.set()
+            return
+        except Exception as e:
+            print(f"Main thread encountered an error: {e}")
+            self.stop_event.set()
+            raise e
+
+    def _get_out_tensor(
+        self, number_of_tracks: int, batch_size: int, sequence_length: int
+    ) -> cp.ndarray:
+        shape = (number_of_tracks, batch_size, sequence_length)
+        if self._out is None or self._out.shape != shape:
+            self._out = cp.zeros(shape, dtype=cp.float32)
+        return self._out
+
+    def _determine_slice_size(self, n_samples: int) -> int:
+        if self.slice_size is None:
+            return n_samples
+        if self.slice_size > n_samples:
+            return n_samples
+        return self.slice_size
+
+    def _slices_objects(
+        self, n_samples: int, slice_size: int
+    ) -> Generator[slice, None, None]:
+        for i in range(n_samples // slice_size):
+            yield slice(i * slice_size, (i + 1) * slice_size)
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -198,3 +229,6 @@ class StreamedDataloader:
     def join_workers(self) -> None:
         for worker in self.workers:
             worker.join()
+
+    def __del__(self) -> None:
+        self.stop()

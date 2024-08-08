@@ -55,7 +55,8 @@ def intervals_to_values(
         out: array of size n_tracks x batch_size x sequence_length to store the output
         found_starts: result of searchsorted (if precalculated). Indices into track_starts.
         found_ends: result of searchsorted (if precalculated). Indices into track_ends.
-        sizes: number of elements in track_starts/track_ends/track_values for each track
+        sizes: number of elements in track_starts/track_ends/track_values for each track.
+            Only needed when found_starts and found_ends are not given.
         window_size: size in basepairs to average over (default: 1)
     Returns:
         out: array of size n_tracks x batch_size x sequence_length
@@ -107,6 +108,14 @@ def intervals_to_values(
     logging.debug(
         f"batch_size: {batch_size}\nmax_number_intervals: {max_number_intervals}\ngrid_size: {grid_size}\nblock_size: {block_size}"
     )
+
+    query_starts = cp.ascontiguousarray(query_starts)
+    query_ends = cp.ascontiguousarray(query_ends)
+    found_starts = cp.ascontiguousarray(found_starts)
+    found_ends = cp.ascontiguousarray(found_ends)
+    array_start = cp.ascontiguousarray(array_start)
+    array_end = cp.ascontiguousarray(array_end)
+    array_value = cp.ascontiguousarray(array_value)
 
     cuda_kernel(
         (grid_size,),

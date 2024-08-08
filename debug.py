@@ -36,10 +36,11 @@ def main() -> None:
         collection=collection,
         num_threads=4,
         queue_size=4,
+        slice_size=3,
     )
 
-    for i, batch in enumerate(data_loader):
-        print(i, batch)
+    for i, output in enumerate(data_loader):
+        print(i, output, flush=True)
         if i == 2000:
             data_loader.stop()
             break
