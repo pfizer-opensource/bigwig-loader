@@ -12,13 +12,9 @@ class BigWigStore:
         path: Union[str, Path],
         chunk_offsets: npt.NDArray[np.int64],
         chunk_sizes: npt.NDArray[np.int64],
-        use_cufile: bool = True,
     ) -> None:
         self.path = path
-        if use_cufile:
-            self.file_handle = CuFile(path, flags="r")
-        else:
-            self.file_handle = open(path, "rb", buffering=0)
+        self.file_handle = CuFile(path, flags="r")
         self.chunk_offsets = chunk_offsets
         self.chunk_sizes = chunk_sizes
 

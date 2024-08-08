@@ -12,7 +12,6 @@ import numpy.typing as npt
 from bigwig_loader.decompressor import Decoder
 from bigwig_loader.intervals_to_values import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
-from bigwig_loader.memory_bank import create_memory_bank
 from bigwig_loader.searchsorted import interval_searchsorted
 
 if TYPE_CHECKING:
@@ -32,10 +31,8 @@ class BatchProcessor:
             npt.NDArray[np.int64],
         ],
         local_chrom_ids_to_offset_matrix: cp.ndarray,
-        use_cufile: bool = True,
     ):
         self._bigwigs = bigwigs
-        self._use_cufile = use_cufile
         self._max_rows_per_chunk = max_rows_per_chunk
         self._local_to_global = local_to_global
         self._local_chrom_ids_to_offset_matrix = local_chrom_ids_to_offset_matrix
@@ -51,7 +48,7 @@ class BatchProcessor:
 
     @cached_property
     def memory_bank(self) -> MemoryBank:
-        return create_memory_bank(elastic=True, use_cufile=self._use_cufile)
+        return MemoryBank(elastic=True)
 
     def _get_out_tensor(self, batch_size: int, sequence_length: int) -> cp.ndarray:
         """Resuses a reserved tensor if possible (when out shape is constant),

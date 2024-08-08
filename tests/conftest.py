@@ -31,14 +31,9 @@ def bigwig_path():
     return get_example_bigwigs_files()
 
 
-@pytest.fixture(params=[True])
-def use_cufile(request):
-    return request.param
-
-
 @pytest.fixture
-def collection(bigwig_path, use_cufile):
-    collection = BigWigCollection(bigwig_path, first_n_files=2, use_cufile=use_cufile)
+def collection(bigwig_path):
+    collection = BigWigCollection(bigwig_path, first_n_files=2)
     return collection
 
 

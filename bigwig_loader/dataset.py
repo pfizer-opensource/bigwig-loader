@@ -61,8 +61,6 @@ class BigWigDataset:
         repeat_same_positions: if True the positions sampler does not draw a new random collection
             of positions when the buffer runs out, but repeats the same samples. Can be used to
             check whether network can overfit.
-        use_cufile: whether to use kvikio cuFile to directly load data from file to GPU memory.
-
     """
 
     def __init__(
@@ -87,7 +85,6 @@ class BigWigDataset:
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
-        use_cufile: bool = True,
     ):
         self.batch_size = batch_size
         super_batch_size = super_batch_size or batch_size
@@ -124,7 +121,6 @@ class BigWigDataset:
             first_n_files=first_n_files,
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,
-            use_cufile=use_cufile,
         )
         self._super_batch_sequences: cp.ndarray = None
         self._super_batch_targets: cp.ndarray = None
@@ -205,7 +201,6 @@ class BigWigSuperDataset:
         repeat_same_positions: if True the positions sampler does not draw a new random collection
             of positions when the buffer runs out, but repeats the same samples. Can be used to
             check whether network can overfit.
-        use_cufile: whether to use kvikio cuFile to directly load data from file to GPU memory.
     """
 
     def __init__(
@@ -229,7 +224,6 @@ class BigWigSuperDataset:
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
-        use_cufile: bool = True,
     ):
         super().__init__()
 
@@ -268,7 +262,6 @@ class BigWigSuperDataset:
         self._position_sampler_buffer_size = position_sampler_buffer_size
         self._repeat_same_positions = repeat_same_positions
         self._moving_average_window_size = moving_average_window_size
-        self._use_cufile = use_cufile
 
     def reset_gpu(self) -> None:
         self.bigwig_collection.reset_gpu()
@@ -311,7 +304,6 @@ class BigWigSuperDataset:
                 crawl=self._crawl,
                 scale=self._scale,
                 first_n_files=self._first_n_files,
-                use_cufile=self._use_cufile,
             )
             return self._bigwig_collection
         else:

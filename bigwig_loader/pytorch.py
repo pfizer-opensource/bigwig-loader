@@ -51,7 +51,6 @@ class PytorchBigWigDataset(
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
         position_samples_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
-        use_cufile: whether to use kvikio cuFile to directly load data from file to GPU memory.
     """
 
     def __init__(
@@ -75,7 +74,6 @@ class PytorchBigWigDataset(
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
-        use_cufile: bool = True,
     ):
         super().__init__()
         self._dataset = BigWigDataset(
@@ -96,7 +94,6 @@ class PytorchBigWigDataset(
             first_n_files=first_n_files,
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,
-            use_cufile=use_cufile,
         )
 
     def __iter__(self) -> Iterator[tuple[torch.FloatTensor, torch.FloatTensor]]:

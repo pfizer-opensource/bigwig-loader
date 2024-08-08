@@ -48,7 +48,6 @@ class WorkerContext:
                 max_rows_per_chunk=self._collection.max_rows_per_chunk,
                 local_to_global=self._collection.make_positions_global,
                 local_chrom_ids_to_offset_matrix=self._collection.local_chrom_ids_to_offset_matrix,
-                use_cufile=True,
             )
         return self._batch_processor
 

@@ -16,7 +16,6 @@ from ncls import NCLS
 
 from bigwig_loader.decompressor import Decoder
 from bigwig_loader.memory_bank import MemoryBank
-from bigwig_loader.memory_bank import create_memory_bank
 from bigwig_loader.merge_intervals import merge_intervals
 from bigwig_loader.parser import BBIHeader
 from bigwig_loader.parser import ChromosomeTreeHeader
@@ -37,7 +36,6 @@ class BigWig:
         path: Path,
         id: Optional[int] = None,
         scale: float = 1.0,
-        use_cufile: bool = True,
     ):
         """
         Create a BigWig object representing one BigWig file.
@@ -46,10 +44,7 @@ class BigWig:
             id: integer representing the file in a collection
                 when part of a collection.
             scale: scale values in bigwig file by this number.
-            use_cufile: whether to use kvikio cuFile to directly load data from file to
-                GPU memory.
         """
-        self._use_cufile = use_cufile
         with open(path, "rb") as bigwig:
             self.path = path
             self.id = id
@@ -102,7 +97,6 @@ class BigWig:
             self.path,
             chunk_sizes=self.reference_data["data_size"],  # type: ignore
             chunk_offsets=self.reference_data["data_offset"],  # type: ignore
-            use_cufile=self._use_cufile,
         )
 
     def chromosomes(
@@ -172,7 +166,7 @@ class BigWig:
 
         """
         if memory_bank is None:
-            memory_bank = create_memory_bank(elastic=True, use_cufile=self._use_cufile)
+            memory_bank = MemoryBank(elastic=True)
         if decoder is None:
             decoder = Decoder(
                 max_rows_per_chunk=self.max_rows_per_chunk,
