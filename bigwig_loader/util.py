@@ -2,6 +2,7 @@ from typing import Iterable
 from typing import Optional
 from typing import Sequence
 
+import cupy as cp
 import pandas as pd
 from natsort import natsort_keygen
 from natsort import natsorted
@@ -52,7 +53,11 @@ _string_to_encoding = {
     "N": [0.25, 0.25, 0.25, 0.25],
 }
 
+
 _standard_bases = {"A", "C", "G", "T"}
+
+_base_to_int = {base: i for i, base in enumerate(_string_to_encoding.keys())}
+_encodings = [value for value in _string_to_encoding.values()]
 
 
 def fraction_non_standard(sequence: str) -> float:
@@ -74,6 +79,16 @@ def chromosome_sort(chromosomes: Iterable[str]) -> list[str]:
     standard_present = chromosomes.intersection(standard)
     rest = chromosomes - standard_present
     return natsorted(standard_present) + natsorted(rest)  # type: ignore
+
+
+def cupy_encode(sequences: Sequence[str]) -> cp.ndarray:
+    n_sequences = len(sequences)
+    sequence_length = len(sequences[0])
+    cupy_encodings = cp.asarray(_encodings)
+    ints = [_base_to_int[base] for sequence in sequences for base in sequence]
+    cupy_sequence = cp.asarray(ints, dtype=cp.uint8)
+    encoding = cupy_encodings[cupy_sequence]
+    return encoding.reshape(n_sequences, sequence_length, 4)
 
 
 if __name__ == "__main__":
