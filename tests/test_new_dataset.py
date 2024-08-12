@@ -1,11 +1,11 @@
 import pytest
 
-from bigwig_loader.dataset_new import NewDataset
+from bigwig_loader.dataset_new import Dataset
 
 
 @pytest.fixture
 def dataset(bigwig_path, reference_genome_path, merged_intervals):
-    dataset = NewDataset(
+    dataset = Dataset(
         regions_of_interest=merged_intervals,
         collection=bigwig_path,
         reference_genome_path=reference_genome_path,
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     merged_intervals = collection.intervals(
         ["chr3", "chr4", "chr5"], exclude_chromosomes=["chr4"], merge=True, threshold=2
     )
-    ds = NewDataset(
+    ds = Dataset(
         regions_of_interest=merged_intervals,
         collection=bigwig_path,
         reference_genome_path=get_reference_genome(),
