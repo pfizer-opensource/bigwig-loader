@@ -125,8 +125,8 @@ class NewDataset:
             else:
                 yield sequences, batch.values
             if i == self.batches_per_epoch:
-                self.dataloader.stop()
                 break
+        self.dataloader.stop()
 
     @property
     def bigwig_collection(self) -> BigWigCollection:

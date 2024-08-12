@@ -72,7 +72,7 @@ class WorkerContext:
             self._batch_count += 1
 
     def _wait_until_ready(self) -> bool:
-        while not self.ready.is_set():
+        while True:
             if self.stop_event.is_set():
                 return False
             # returns True when ready event is set
