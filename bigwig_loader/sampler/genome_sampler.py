@@ -16,7 +16,43 @@ from bigwig_loader.util import onehot_sequences
 ENCODERS: dict[str, Callable[[Sequence[str]], Any]] = {"onehot": onehot_sequences}
 
 
-class Genome:
+class GenomicSequenceSampler:
+    def __init__(
+        self,
+        reference_genome_path: Path,
+        sequence_length: int,
+        position_sampler: Iterator[tuple[str, int]],
+        maximum_unknown_bases_fraction: float = 0.1,
+    ):
+        self.reference_genome_path = reference_genome_path
+        self.sequence_length = sequence_length
+        self.position_sampler = position_sampler
+        self.maximum_unknown_bases_fraction = maximum_unknown_bases_fraction
+        self.genome = Fasta(fsspec.open(self.reference_genome_path))
+        self._half_sequence_length = self.sequence_length // 2
+
+    def __iter__(self) -> Iterator[tuple[str, int, str]]:
+        for chromosome, center in self.position_sampler:
+            start = center - self._half_sequence_length
+            end = start + self.sequence_length
+            sequence = self._get_sequence(chromosome, start, end)
+            if not sequence:
+                continue
+            if len(sequence) != self.sequence_length:
+                continue
+            if fraction_non_standard(sequence) > self.maximum_unknown_bases_fraction:
+                continue
+            yield chromosome, center, sequence
+
+    def _get_sequence(
+        self, chrom: str, start: int, end: int, strand: Literal["+", "-"] = "+"
+    ) -> Any:
+        return self.genome[chrom][start:end].seq
+
+
+class GenomicSequenceBatchSampler:
+    """Batched version of GenomicSequenceSampler."""
+
     def __init__(
         self,
         reference_genome_path: Path,
@@ -28,38 +64,35 @@ class Genome:
             Union[Callable[[Sequence[str]], Any], Literal["onehot"]]
         ] = "onehot",
     ):
-        self.reference_genome_path = reference_genome_path
-        self.sequence_length = sequence_length
-        self.genome = Fasta(fsspec.open(self.reference_genome_path))
-        self.position_sampler = position_sampler
+        self._genomic_sequence_sampler = GenomicSequenceSampler(
+            reference_genome_path=reference_genome_path,
+            sequence_length=sequence_length,
+            position_sampler=position_sampler,
+            maximum_unknown_bases_fraction=maximum_unknown_bases_fraction,
+        )
         self.batch_size = batch_size
-        self.maximum_unknown_bases_fraction = maximum_unknown_bases_fraction
         self.encoder = self._select_encoder(encoder)
 
-    def get_batch(self) -> tuple[list[tuple[str, int]], Any]:
-        selected_positions: list[tuple[str, int]] = []
+    def __iter__(self) -> Iterator[tuple[list[str], list[int], list[Any]]]:
+        return self
+
+    def __next__(self) -> tuple[list[str], list[int], list[Any]]:
+        return self.get_batch()
+
+    def get_batch(self) -> tuple[list[str], list[int], list[Any]]:
+        chromosomes = []
+        centers = []
         sequences = []
-        while len(selected_positions) < self.batch_size:
-            chromosome, center = next(self.position_sampler)
-            start = center - (self.sequence_length // 2)
-            end = start + self.sequence_length
-            sequence = self._get_sequence(chromosome, start, end)
-            if not sequence:
-                continue
-            if len(sequence) != self.sequence_length:
-                continue
-            if fraction_non_standard(sequence) > self.maximum_unknown_bases_fraction:
-                continue
+
+        for _, (chromosome, center, sequence) in zip(
+            range(self.batch_size), self._genomic_sequence_sampler
+        ):
+            chromosomes.append(chromosome)
+            centers.append(center)
             sequences.append(sequence)
-            selected_positions.append((chromosome, center))
         if self.encoder is not None:
             sequences = self.encoder(sequences)
-        return selected_positions, sequences
-
-    def _get_sequence(
-        self, chrom: str, start: int, end: int, strand: Literal["+", "-"] = "+"
-    ) -> Any:
-        return self.genome[chrom][start:end].seq
+        return chromosomes, centers, sequences
 
     def _select_encoder(
         self,

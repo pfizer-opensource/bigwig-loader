@@ -12,7 +12,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from bigwig_loader.batch import BatchProcessor
+from bigwig_loader.batch_processor import BatchProcessor
 from bigwig_loader.bigwig import BigWig
 from bigwig_loader.decompressor import Decoder
 from bigwig_loader.memory_bank import MemoryBank

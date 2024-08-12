@@ -10,7 +10,7 @@ from bigwig_loader.streamed_dataset import StreamedDataloader
 def main() -> None:
     bigwig_path = config.bigwig_dir
 
-    collection = BigWigCollection(bigwig_path, first_n_files=2, use_cufile=True)
+    collection = BigWigCollection(bigwig_path, first_n_files=2)
 
     df = pd.read_csv(config.example_positions, sep="\t")
     df = df[df["chr"].isin(collection.get_chromosomes_present_in_all_files())]

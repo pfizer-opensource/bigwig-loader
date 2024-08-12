@@ -2,28 +2,27 @@ import queue
 import threading
 from typing import Generator
 from typing import Iterable
-from typing import Sequence
+from typing import Iterator
 
 import cupy as cp
-import numpy as np
-import numpy.typing as npt
 
-from bigwig_loader.batch import BatchProcessor
+from bigwig_loader.batch import Batch
+from bigwig_loader.batch import IntervalType
+from bigwig_loader.batch_processor import BatchProcessor
+from bigwig_loader.batch_processor import PreprocessedReturnType
 from bigwig_loader.collection import BigWigCollection
 from bigwig_loader.intervals_to_values import intervals_to_values
 
-InputBatchType = tuple[
-    Sequence[str] | npt.NDArray[np.generic],
-    Sequence[int] | npt.NDArray[np.int64],
-    Sequence[int] | npt.NDArray[np.int64],
-]
+InputBatchType = Batch | IntervalType
 
 
 class WorkerContext:
     def __init__(
         self,
         input_queue: queue.Queue[InputBatchType],
-        output_queue: queue.Queue[tuple[cp.ndarray, "WorkerContext"]],
+        output_queue: queue.Queue[
+            tuple[Batch, PreprocessedReturnType, "WorkerContext"]
+        ],
         stop_event: threading.Event,
         collection: BigWigCollection,
         worker_id: int | None = None,
@@ -52,37 +51,44 @@ class WorkerContext:
         return self._batch_processor
 
     def _worker(self) -> None:
-        while not self.stop_event.is_set():
-            self.ready.wait()  # Wait until the event is set
-            self.ready.clear()  # Clear the event to wait for the next signal
+        while self._wait_until_ready():
             try:
                 with self.stream as stream:
-                    chrom, start, end = self.input_queue.get(timeout=1)
+                    query = self.input_queue.get(timeout=1)
+                    query = Batch.from_args(query)
                     result = self.batch_processor.preprocess(
-                        chrom, start, end, stream=stream
+                        chromosomes=query.chromosomes,
+                        start=query.starts,
+                        end=query.ends,
+                        track_indices=query.track_indices,
+                        stream=stream,
                     )
                     self.stream.synchronize()
-                    self.output_queue.put((result, self))
+                    self._put_output_queue(query, result)
                     self.input_queue.task_done()
             except queue.Empty:
+                self.ready.set()
                 continue
-            except Exception as e:
-                print(f" worker {self.worker_id}; batch {self._batch_count}")
-                print(
-                    f" worker {self.worker_id}; batch {self._batch_count}",
-                    "chrom",
-                    chrom,
-                )
-                print(
-                    f" worker {self.worker_id}; batch {self._batch_count}",
-                    "start",
-                    start,
-                )
-                print(
-                    f" worker {self.worker_id}; batch {self._batch_count}", "end", end
-                )
-                raise e
             self._batch_count += 1
+
+    def _wait_until_ready(self) -> bool:
+        while not self.ready.is_set():
+            if self.stop_event.is_set():
+                return False
+            # returns True when ready event is set
+            # and false when the timeout is reached
+            if self.ready.wait(timeout=1):
+                self.ready.clear()
+                return True
+        return True
+
+    def _put_output_queue(self, query: Batch, result: PreprocessedReturnType) -> None:
+        while not self.stop_event.is_set():
+            try:
+                self.output_queue.put((query, result, self), timeout=1)
+                break
+            except queue.Full:
+                continue
 
     def join(self) -> None:
         self.stream.synchronize()
@@ -97,18 +103,20 @@ class StreamedDataloader:
         num_threads: int = 4,
         queue_size: int = 10,
         slice_size: int | None = None,
-        window__size: int = 1,
+        window_size: int = 1,
     ):
         self.input_generator = input_generator
         self.collection = collection
         self.num_threads = num_threads
         self.queue_size = queue_size
         self.slice_size = slice_size
-        self.window_size = window__size
+        self.window_size = window_size
         self.input_queue: queue.Queue[InputBatchType] = queue.Queue(
             maxsize=self.queue_size
         )  # Thread-safe input queue
-        self.output_queue: queue.Queue[tuple[cp.ndarray, WorkerContext]] = queue.Queue(
+        self.output_queue: queue.Queue[
+            tuple[Batch, cp.ndarray, WorkerContext]
+        ] = queue.Queue(
             maxsize=self.queue_size
         )  # Thread-safe output queue
         self.stop_event = threading.Event()
@@ -128,7 +136,7 @@ class StreamedDataloader:
             )
             self.workers.append(worker)
 
-    def __iter__(self) -> Iterable[cp.ndarray]:
+    def __iter__(self) -> Iterator[Batch]:
         self.data_generator_thread = threading.Thread(target=self._feed_generator)
         self.data_generator_thread.start()
         for worker in self.workers:
@@ -137,14 +145,19 @@ class StreamedDataloader:
 
     def _feed_generator(self) -> None:
         for data in self.input_generator:
-            self.input_queue.put(data)
+            while not self.stop_event.is_set():
+                try:
+                    self.input_queue.put(data, timeout=1)
+                    break
+                except queue.Full:
+                    continue
             if self.stop_event.is_set():
                 break
 
-    def _generate_batches(self) -> Generator[cp.ndarray, None, None]:
+    def _generate_batches(self) -> Generator[Batch, None, None]:
         try:
             while True:
-                result, worker = self.output_queue.get(timeout=30)
+                batch, result, worker = self.output_queue.get(timeout=30)
 
                 (
                     start_data,
@@ -182,12 +195,23 @@ class StreamedDataloader:
                             out=out,
                         )
 
-                        batch = cp.transpose(value_matrix, (1, 0, 2))
+                        values = cp.transpose(value_matrix, (1, 0, 2))
                         if self.collection.scaling_factors_cupy is not None:
-                            batch *= self.collection.scaling_factors_cupy
+                            scaling_factors = self.collection.scaling_factors_cupy
+                            if batch.track_indices is not None:
+                                scaling_factors = scaling_factors[
+                                    :, batch.track_indices, :
+                                ]
+                            print(scaling_factors)
+                            print(scaling_factors.shape)
+
+                            values *= scaling_factors
                         stream.synchronize()
 
-                    yield value_matrix
+                        sliced_query = batch[select]
+                        sliced_query.values = values
+
+                    yield sliced_query
 
                 self.output_queue.task_done()
                 worker.ready.set()
@@ -195,7 +219,6 @@ class StreamedDataloader:
             self.stop_event.set()
             return
         except Exception as e:
-            print(f"Main thread encountered an error: {e}")
             self.stop_event.set()
             raise e
 
@@ -203,6 +226,9 @@ class StreamedDataloader:
         self, number_of_tracks: int, batch_size: int, sequence_length: int
     ) -> cp.ndarray:
         shape = (number_of_tracks, batch_size, sequence_length)
+
+        print(shape)
+
         if self._out is None or self._out.shape != shape:
             self._out = cp.zeros(shape, dtype=cp.float32)
         return self._out

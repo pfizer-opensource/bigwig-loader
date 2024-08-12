@@ -81,7 +81,7 @@ def chromosome_sort(chromosomes: Iterable[str]) -> list[str]:
     return natsorted(standard_present) + natsorted(rest)  # type: ignore
 
 
-def cupy_encode(sequences: Sequence[str]) -> cp.ndarray:
+def onehot_sequences_cupy(sequences: Sequence[str]) -> cp.ndarray:
     n_sequences = len(sequences)
     sequence_length = len(sequences[0])
     cupy_encodings = cp.asarray(_encodings)
@@ -92,5 +92,5 @@ def cupy_encode(sequences: Sequence[str]) -> cp.ndarray:
 
 
 if __name__ == "__main__":
-    onehot = onehot_sequences(["AAAAATTTTACGT", "CAGAATTGTACGT"])
+    onehot = onehot_sequences_cupy(["AAAAATTTTACGT", "CAGAATTGTACGT"])
     print(onehot)

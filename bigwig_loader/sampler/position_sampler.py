@@ -6,7 +6,7 @@ import pandas as pd
 from bigwig_loader.util import make_cumulative_index_intervals
 
 
-class PositionSampler:
+class RandomPositionSampler:
     def __init__(
         self,
         regions_of_interest: pd.DataFrame,
