@@ -12,7 +12,7 @@ import torch
 from torch.utils.data import IterableDataset
 
 from bigwig_loader.collection import BigWigCollection
-from bigwig_loader.dataset import BigWigDataset
+from bigwig_loader.dataset_new import Dataset
 
 
 class PytorchBigWigDataset(
@@ -51,6 +51,9 @@ class PytorchBigWigDataset(
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
         position_samples_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
+        sub_sample_tracks: int, if set a  different random set of tracks is selected in each
+            superbatch from the total number of tracks. The indices corresponding to those tracks
+            are returned in the output.
     """
 
     def __init__(
@@ -74,9 +77,10 @@ class PytorchBigWigDataset(
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
+        sub_sample_tracks: Optional[int] = None,
     ):
         super().__init__()
-        self._dataset = BigWigDataset(
+        self._dataset = Dataset(
             regions_of_interest=regions_of_interest,
             collection=collection,
             reference_genome_path=reference_genome_path,
@@ -94,17 +98,23 @@ class PytorchBigWigDataset(
             first_n_files=first_n_files,
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,
+            sub_sample_tracks=sub_sample_tracks,
         )
 
-    def __iter__(self) -> Iterator[tuple[torch.FloatTensor, torch.FloatTensor]]:
-        iter(self._dataset)
-        return self
-
-    def __next__(self) -> tuple[torch.FloatTensor, torch.FloatTensor]:
-        sequences, target = next(self._dataset)
-        target = torch.as_tensor(target, device="cuda")
-        sequences = torch.FloatTensor(sequences)
-        return sequences, target
+    def __iter__(
+        self,
+    ) -> Iterator[
+        tuple[torch.FloatTensor, torch.FloatTensor]
+        | tuple[torch.FloatTensor, torch.FloatTensor, torch.IntTensor]
+    ]:
+        for batch in self._dataset:
+            sequences = torch.FloatTensor(batch[0])
+            target = torch.as_tensor(batch[1], device="cuda")
+            if len(batch) >= 3:
+                track_indices = torch.tensor(batch[2], device="cuda", dtype=torch.int)  # type: ignore
+                yield sequences, target, track_indices
+            else:
+                yield sequences, target
 
     def reset_gpu(self) -> None:
         self._dataset.reset_gpu()

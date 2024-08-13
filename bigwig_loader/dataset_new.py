@@ -66,7 +66,9 @@ class Dataset:
         repeat_same_positions: if True the positions sampler does not draw a new random collection
             of positions when the buffer runs out, but repeats the same samples. Can be used to
             check whether network can overfit.
-        sub_sample_tracks: int, if set
+        sub_sample_tracks: int, if set a  different random set of tracks is selected in each
+            superbatch from the total number of tracks. The indices corresponding to those tracks
+            are returned in the output.
     """
 
     def __init__(

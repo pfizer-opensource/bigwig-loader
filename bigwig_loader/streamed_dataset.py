@@ -202,8 +202,6 @@ class StreamedDataloader:
                                 scaling_factors = scaling_factors[
                                     :, batch.track_indices, :
                                 ]
-                            print(scaling_factors)
-                            print(scaling_factors.shape)
 
                             values *= scaling_factors
                         stream.synchronize()
