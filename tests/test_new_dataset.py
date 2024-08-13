@@ -114,5 +114,6 @@ if __name__ == "__main__":
         sub_sample_tracks=1,
     )
 
+    print("start")
     test_output_shape_sub_sampled_tracks(ds)
     print("done")
