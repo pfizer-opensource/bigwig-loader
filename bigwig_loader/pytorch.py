@@ -141,6 +141,10 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         sub_sample_tracks: int, if set a  different random set of tracks is selected in each
             superbatch from the total number of tracks. The indices corresponding to those tracks
             are returned in the output.
+        n_threads: number of python threads / cuda streams to use for loading the data to
+            GPU. More threads means that more IO can take place while the GPU is busy doing
+            calculations (decompressing or neural network training for example). More threads
+            also means a higher GPU memory usage. Default: 4
         return_batch_objects: if True, the batches will be returned as instances of
             bigwig_loader.pytorch.PytorchBatch
     """
@@ -167,6 +171,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
         sub_sample_tracks: Optional[int] = None,
+        n_threads: int = 4,
         return_batch_objects: bool = False,
     ):
         super().__init__()
@@ -189,6 +194,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,
             sub_sample_tracks=sub_sample_tracks,
+            n_threads=n_threads,
             return_batch_objects=True,
         )
         self._return_batch_objects = return_batch_objects

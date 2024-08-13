@@ -70,6 +70,10 @@ class Dataset:
         sub_sample_tracks: int, if set a  different random set of tracks is selected in each
             superbatch from the total number of tracks. The indices corresponding to those tracks
             are returned in the output.
+        n_threads: number of python threads / cuda streams to use for loading the data to
+            GPU. More threads means that more IO can take place while the GPU is busy doing
+            calculations (decompressing or neural network training for example). More threads
+            also means a higher GPU memory usage.
         return_batch_objects: if True, the batches will be returned as instances of
             bigwig_loader.batch.Batch
     """
@@ -97,6 +101,7 @@ class Dataset:
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
         sub_sample_tracks: Optional[int] = None,
+        n_threads: int = 4,
         return_batch_objects: bool = False,
     ):
         super().__init__()
@@ -140,6 +145,7 @@ class Dataset:
         self._repeat_same_positions = repeat_same_positions
         self._moving_average_window_size = moving_average_window_size
         self._sub_sample_tracks = sub_sample_tracks
+        self._n_threads = n_threads
         self._return_batch_objects = return_batch_objects
 
     def _create_dataloader(self) -> StreamedDataloader:
@@ -172,8 +178,8 @@ class Dataset:
         return StreamedDataloader(
             input_generator=query_batch_generator,
             collection=self.bigwig_collection,
-            num_threads=4,
-            queue_size=4,
+            num_threads=self._n_threads,
+            queue_size=self._n_threads + 1,
             slice_size=self.batch_size,
             window_size=self.window_size,
         )
