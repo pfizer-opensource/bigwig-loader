@@ -7,17 +7,104 @@ from typing import Optional
 from typing import Sequence
 from typing import Union
 
+import cupy as cp
+import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import IterableDataset
 
+from bigwig_loader.batch import Batch
 from bigwig_loader.collection import BigWigCollection
 from bigwig_loader.dataset_new import Dataset
 
 
-class PytorchBigWigDataset(
-    IterableDataset[tuple[torch.FloatTensor, torch.FloatTensor]]
-):
+class PytorchBatch:
+    """Batch
+    This is a simple container object to hold on to a set of arrays
+    that represent a batch of data. It serves as the query to bigwig_loader,
+    therefore the minimum init args are chromosomes, starts and ends, which
+    is really everything bigwig_loader really needs.
+
+    It is used to pass data through the input and output queues of the
+    dataloader that works with threads and cuda streams. At some point it
+    gets cumbersome to keep track of the order of the arrays, so this
+    object is used to make that a bit simpler.
+
+    Args:
+        chromosomes: 1D array of size batch_size ["chr1", "chr2", ...],
+        starts: 1D array of size batch_size [0, 42, ...],
+        ends: 1D array of size batch_size [100, 142, ...],
+        track_indices (Optional): which tracks to include in this batch
+            (index should correspond to the order in
+            bigwig_loader.collection.BigWigCollection). When None, all
+            tracks are included.
+        sequences (Optional): ["ACTAGANTG", "CCTTGAGT", ...].
+        values (cp.ndarray | None): The values of the batch: the output matrix
+        bigwig_loader produces. size: (batch_size, n_tracks, n_values)
+        other_batched (list of Arrays): other arrays that share
+            the batch_dimension with chromosomes, starts, ends, sequences and
+            values. Here for convenience. When creating a slice of Batch,
+            these arrays are sliced in the same way the previously mentioned
+            arrays are sliced.
+        other (Any): Any other data to hold on to for the batch. Can be anything
+            No slicing is performed on this object when the Batch is sliced.
+    """
+
+    def __init__(
+        self,
+        chromosomes: Any,
+        starts: Any,
+        ends: Any,
+        values: torch.Tensor,
+        track_indices: torch.Tensor | None,
+        sequences: torch.Tensor | list[str] | None,
+        other_batched: Any | None,
+        other: Any,
+    ):
+        self.chromosomes = chromosomes
+        self.starts = starts
+        self.ends = ends
+        self.sequences = sequences
+        self.track_indices = track_indices
+        self.values = values
+        self.other_batched = other_batched
+        self.other = other
+
+    @classmethod
+    def from_batch(cls, batch: Batch) -> "PytorchBatch":
+        if batch.other_batched is not None:
+            other_batched = (
+                [cls._convert_if_possible(tensor) for tensor in batch.other_batched],
+            )
+        else:
+            other_batched = None
+        return PytorchBatch(
+            chromosomes=cls._convert_if_possible(batch.chromosomes),
+            starts=cls._convert_if_possible(batch.starts),
+            ends=cls._convert_if_possible(batch.ends),
+            values=cls._convert_if_possible(batch.values),
+            track_indices=cls._convert_if_possible(batch.track_indices),
+            sequences=cls._convert_if_possible(batch.sequences),
+            other_batched=other_batched,
+            other=cls._convert_if_possible(batch.other),
+        )
+
+    @staticmethod
+    def _convert_if_possible(tensor: Any) -> Any:
+        if isinstance(tensor, cp.ndarray) or isinstance(tensor, np.ndarray):
+            return torch.as_tensor(tensor)
+        return tensor
+
+
+GENOMIC_SEQUENCE_TYPE = Union[torch.Tensor, list[str], None]
+BATCH_TYPE = Union[
+    tuple[GENOMIC_SEQUENCE_TYPE, torch.Tensor],
+    tuple[GENOMIC_SEQUENCE_TYPE, torch.Tensor, torch.Tensor],
+    PytorchBatch,
+]
+
+
+class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
 
     """
     Pytorch IterableDataset over FASTA files and BigWig profiles.
@@ -54,6 +141,8 @@ class PytorchBigWigDataset(
         sub_sample_tracks: int, if set a  different random set of tracks is selected in each
             superbatch from the total number of tracks. The indices corresponding to those tracks
             are returned in the output.
+        return_batch_objects: if True, the batches will be returned as instances of
+            bigwig_loader.pytorch.PytorchBatch
     """
 
     def __init__(
@@ -78,6 +167,7 @@ class PytorchBigWigDataset(
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
         sub_sample_tracks: Optional[int] = None,
+        return_batch_objects: bool = False,
     ):
         super().__init__()
         self._dataset = Dataset(
@@ -99,22 +189,21 @@ class PytorchBigWigDataset(
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,
             sub_sample_tracks=sub_sample_tracks,
+            return_batch_objects=True,
         )
+        self._return_batch_objects = return_batch_objects
 
     def __iter__(
         self,
-    ) -> Iterator[
-        tuple[torch.FloatTensor, torch.FloatTensor]
-        | tuple[torch.FloatTensor, torch.FloatTensor, torch.IntTensor]
-    ]:
+    ) -> Iterator[BATCH_TYPE]:
         for batch in self._dataset:
-            sequences = torch.FloatTensor(batch[0])
-            target = torch.as_tensor(batch[1], device="cuda")
-            if len(batch) >= 3:
-                track_indices = torch.tensor(batch[2], device="cuda", dtype=torch.int)  # type: ignore
-                yield sequences, target, track_indices
+            pytorch_batch = PytorchBatch.from_batch(batch)  # type: ignore
+            if self._return_batch_objects:
+                yield pytorch_batch
+            elif pytorch_batch.track_indices is None:
+                yield pytorch_batch.sequences, pytorch_batch.values
             else:
-                yield sequences, target
+                yield pytorch_batch.sequences, pytorch_batch.values, pytorch_batch.track_indices
 
     def reset_gpu(self) -> None:
         self._dataset.reset_gpu()

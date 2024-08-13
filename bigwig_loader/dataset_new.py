@@ -10,6 +10,7 @@ from typing import Union
 import cupy as cp
 import pandas as pd
 
+from bigwig_loader.batch import Batch
 from bigwig_loader.batch import IntSequenceType
 from bigwig_loader.collection import BigWigCollection
 from bigwig_loader.cupy_functions import moving_average
@@ -69,6 +70,8 @@ class Dataset:
         sub_sample_tracks: int, if set a  different random set of tracks is selected in each
             superbatch from the total number of tracks. The indices corresponding to those tracks
             are returned in the output.
+        return_batch_objects: if True, the batches will be returned as instances of
+            bigwig_loader.batch.Batch
     """
 
     def __init__(
@@ -94,6 +97,7 @@ class Dataset:
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
         sub_sample_tracks: Optional[int] = None,
+        return_batch_objects: bool = False,
     ):
         super().__init__()
 
@@ -136,6 +140,7 @@ class Dataset:
         self._repeat_same_positions = repeat_same_positions
         self._moving_average_window_size = moving_average_window_size
         self._sub_sample_tracks = sub_sample_tracks
+        self._return_batch_objects = return_batch_objects
 
     def _create_dataloader(self) -> StreamedDataloader:
         position_sampler = RandomPositionSampler(
@@ -178,6 +183,7 @@ class Dataset:
     ) -> Iterator[
         tuple[cp.ndarray | list[str] | None, cp.ndarray]
         | tuple[cp.ndarray | list[str] | None, cp.ndarray, IntSequenceType]
+        | Batch
     ]:
         dataloader = self._create_dataloader()
         for i, batch in enumerate(dataloader):
@@ -186,7 +192,11 @@ class Dataset:
                 sequences = self._sequence_encoder(batch.sequences)
             else:
                 sequences = batch.sequences
-            if batch.track_indices is not None:
+            if self._return_batch_objects:
+                batch.sequences = sequences
+                batch.values = values
+                yield batch
+            elif batch.track_indices is not None:
                 yield sequences, values, batch.track_indices
             else:
                 yield sequences, values

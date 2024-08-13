@@ -96,3 +96,17 @@ class Batch:
 
     def __len__(self) -> int:
         return len(self.starts)
+
+    def __repr__(self) -> str:
+        n_chromosomes = len(self.chromosomes) if self.chromosomes is not None else 0
+        n_starts = len(self.starts) if self.starts is not None else 0
+        n_ends = len(self.ends) if self.ends is not None else 0
+        n_sequences = len(self.sequences) if self.sequences is not None else 0
+        value_shape = self.values.shape if self.values is not None else 0
+        n_track_indices = (
+            len(self.track_indices) if self.track_indices is not None else 0
+        )
+        return (
+            f"Batch(chromosomes={n_chromosomes}, starts={n_starts}, ends={n_ends}, "
+            f"sequences={n_sequences}, values={value_shape}, track_indices={n_track_indices})"
+        )
