@@ -3,6 +3,7 @@ from typing import Optional
 from typing import Sequence
 
 import cupy as cp
+import numpy as np
 import pandas as pd
 from natsort import natsort_keygen
 from natsort import natsorted
@@ -56,8 +57,10 @@ _string_to_encoding = {
 
 _standard_bases = {"A", "C", "G", "T"}
 
-_base_to_int = {base: i for i, base in enumerate(_string_to_encoding.keys())}
-_encodings = [value for value in _string_to_encoding.values()]
+encoding_array = np.zeros((26, 4), dtype=cp.float32)
+for letter, encoding in _string_to_encoding.items():
+    index = ord(letter) - 65  # Calculate the index based on the ASCII value
+    encoding_array[index] = encoding
 
 
 def fraction_non_standard(sequence: str) -> float:
@@ -84,11 +87,16 @@ def chromosome_sort(chromosomes: Iterable[str]) -> list[str]:
 def onehot_sequences_cupy(sequences: Sequence[str]) -> cp.ndarray:
     n_sequences = len(sequences)
     sequence_length = len(sequences[0])
-    cupy_encodings = cp.asarray(_encodings)
-    ints = [_base_to_int[base] for sequence in sequences for base in sequence]
-    cupy_sequence = cp.asarray(ints, dtype=cp.uint8)
-    encoding = cupy_encodings[cupy_sequence]
-    return encoding.reshape(n_sequences, sequence_length, 4)
+    cupy_encoding_aray = cp.asarray(encoding_array)
+
+    sequence = "".join(sequences)
+
+    # Convert DNA sequence to bytes (ASCII values)
+    # Subtract 65 from the byte array to get indices corresponding to encoding_array
+    indices = cp.frombuffer(sequence.encode("ascii"), dtype=cp.int8) - 65
+
+    one_hot_encoded = cupy_encoding_aray[indices]
+    return one_hot_encoded.reshape(n_sequences, sequence_length, 4)
 
 
 if __name__ == "__main__":
