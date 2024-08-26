@@ -129,10 +129,8 @@ class StreamedDataloader:
         self._create_workers()
         self.data_generator_thread = threading.Thread(target=self._feed_generator)
         self.data_generator_thread.start()
-        print("=here 1")
         for worker in self.workers:
             worker.ready.set()
-        print("here 2")
         return self
 
     def __exit__(

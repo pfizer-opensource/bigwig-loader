@@ -207,7 +207,6 @@ class Dataset:
                 else:
                     yield sequences, values
                 if i == self.batches_per_epoch - 1:
-                    print("this ahppend")
                     break
 
     @property
