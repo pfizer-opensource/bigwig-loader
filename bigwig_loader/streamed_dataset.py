@@ -1,5 +1,6 @@
 import queue
 import threading
+from types import TracebackType
 from typing import Generator
 from typing import Iterable
 from typing import Iterator
@@ -20,12 +21,10 @@ class WorkerContext:
     def __init__(
         self,
         input_queue: queue.Queue[InputBatchType],
-        output_queue: queue.Queue[
-            tuple[Batch, PreprocessedReturnType, "WorkerContext"]
-        ],
+        output_queue: queue.Queue[tuple[Batch, PreprocessedReturnType, int]],
         stop_event: threading.Event,
         collection: BigWigCollection,
-        worker_id: int | None = None,
+        worker_id: int,
     ):
         self.worker_id = worker_id
         self.stream = cp.cuda.Stream(non_blocking=True)
@@ -85,7 +84,7 @@ class WorkerContext:
     def _put_output_queue(self, query: Batch, result: PreprocessedReturnType) -> None:
         while not self.stop_event.is_set():
             try:
-                self.output_queue.put((query, result, self), timeout=1)
+                self.output_queue.put((query, result, self.worker_id), timeout=1)
                 break
             except queue.Full:
                 continue
@@ -114,16 +113,36 @@ class StreamedDataloader:
         self.input_queue: queue.Queue[InputBatchType] = queue.Queue(
             maxsize=self.queue_size
         )  # Thread-safe input queue
-        self.output_queue: queue.Queue[
-            tuple[Batch, cp.ndarray, WorkerContext]
-        ] = queue.Queue(
+        self.output_queue: queue.Queue[tuple[Batch, cp.ndarray, int]] = queue.Queue(
             maxsize=self.queue_size
         )  # Thread-safe output queue
         self.stop_event = threading.Event()
         self.workers: list[WorkerContext] = []
         self.main_stream = cp.cuda.Stream(non_blocking=True)
-        self._create_workers()
+        self.data_generator_thread: threading.Thread | None = None
+        self._entered = False
         self._out = None
+
+    def __enter__(self) -> "StreamedDataloader":
+        self._entered = True
+        self.stop_event.clear()
+        self._create_workers()
+        self.data_generator_thread = threading.Thread(target=self._feed_generator)
+        self.data_generator_thread.start()
+        print("=here 1")
+        for worker in self.workers:
+            worker.ready.set()
+        print("here 2")
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._entered = False
+        self._destroy()
 
     def _create_workers(self) -> None:
         for i in range(self.num_threads):
@@ -137,10 +156,10 @@ class StreamedDataloader:
             self.workers.append(worker)
 
     def __iter__(self) -> Iterator[Batch]:
-        self.data_generator_thread = threading.Thread(target=self._feed_generator)
-        self.data_generator_thread.start()
-        for worker in self.workers:
-            worker.ready.set()
+        if not self._entered:
+            raise RuntimeError(
+                "StreamedDataloader must be used within a 'with' statement"
+            )
         return self._generate_batches()
 
     def _feed_generator(self) -> None:
@@ -157,7 +176,7 @@ class StreamedDataloader:
     def _generate_batches(self) -> Generator[Batch, None, None]:
         try:
             while True:
-                batch, result, worker = self.output_queue.get(timeout=30)
+                batch, result, worker_id = self.output_queue.get(timeout=30)
 
                 (
                     start_data,
@@ -212,20 +231,18 @@ class StreamedDataloader:
                     yield sliced_query
 
                 self.output_queue.task_done()
-                worker.ready.set()
+                self.workers[worker_id].ready.set()
         except queue.Empty:
-            self.stop_event.set()
+            self.stop()
             return
         except Exception as e:
-            self.stop_event.set()
+            self.stop()
             raise e
 
     def _get_out_tensor(
         self, number_of_tracks: int, batch_size: int, sequence_length: int
     ) -> cp.ndarray:
         shape = (number_of_tracks, batch_size, sequence_length)
-
-        print(shape)
 
         if self._out is None or self._out.shape != shape:
             self._out = cp.zeros(shape, dtype=cp.float32)
@@ -246,12 +263,37 @@ class StreamedDataloader:
 
     def stop(self) -> None:
         self.stop_event.set()
-        self.data_generator_thread.join()
-        self.join_workers()
+        self._join_data_generator()
+        self._join_workers()
 
-    def join_workers(self) -> None:
+    def _join_workers(self) -> None:
         for worker in self.workers:
             worker.join()
 
-    def __del__(self) -> None:
+    def _join_data_generator(self) -> None:
+        if (
+            self.data_generator_thread is not None
+            and self.data_generator_thread.is_alive()
+        ):
+            self.data_generator_thread.join()
+
+    def _destroy(self) -> None:
         self.stop()
+        self._destroy_workers()
+        self._empty_queue()
+        mempool = cp.get_default_memory_pool()
+        mempool.free_all_blocks()
+
+    def _destroy_workers(self) -> None:
+        self.workers = []
+
+    def _empty_queue(self) -> None:
+        while not self.input_queue.empty():
+            self.input_queue.get()
+            self.input_queue.task_done()
+        while not self.output_queue.empty():
+            self.output_queue.get()
+            self.output_queue.task_done()
+
+    def __del__(self) -> None:
+        self._destroy()

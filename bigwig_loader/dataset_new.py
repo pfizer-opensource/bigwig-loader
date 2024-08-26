@@ -191,24 +191,24 @@ class Dataset:
         | tuple[cp.ndarray | list[str] | None, cp.ndarray, IntSequenceType]
         | Batch
     ]:
-        dataloader = self._create_dataloader()
-        for i, batch in enumerate(dataloader):
-            values = moving_average(batch.values, self._moving_average_window_size)
-            if batch.sequences is not None and self._sequence_encoder is not None:
-                sequences = self._sequence_encoder(batch.sequences)
-            else:
-                sequences = batch.sequences
-            if self._return_batch_objects:
-                batch.sequences = sequences
-                batch.values = values
-                yield batch
-            elif batch.track_indices is not None:
-                yield sequences, values, batch.track_indices
-            else:
-                yield sequences, values
-            if i == self.batches_per_epoch:
-                break
-        dataloader.stop()
+        with self._create_dataloader() as dataloader:
+            for i, batch in enumerate(dataloader):
+                values = moving_average(batch.values, self._moving_average_window_size)
+                if batch.sequences is not None and self._sequence_encoder is not None:
+                    sequences = self._sequence_encoder(batch.sequences)
+                else:
+                    sequences = batch.sequences
+                if self._return_batch_objects:
+                    batch.sequences = sequences
+                    batch.values = values
+                    yield batch
+                elif batch.track_indices is not None:
+                    yield sequences, values, batch.track_indices
+                else:
+                    yield sequences, values
+                if i == self.batches_per_epoch - 1:
+                    print("this ahppend")
+                    break
 
     @property
     def bigwig_collection(self) -> BigWigCollection:
