@@ -52,19 +52,24 @@ class WorkerContext:
     def _worker(self) -> None:
         while self._wait_until_ready():
             try:
-                with self.stream as stream:
-                    query = self.input_queue.get(timeout=1)
-                    query = Batch.from_args(query)
-                    result = self.batch_processor.preprocess(
-                        chromosomes=query.chromosomes,
-                        start=query.starts,
-                        end=query.ends,
-                        track_indices=query.track_indices,
-                        stream=stream,
-                    )
-                    self.stream.synchronize()
-                    self._put_output_queue(query, result)
-                    self.input_queue.task_done()
+                # necessary because some other thread
+                # (for instance pytorch-lightning)
+                # can call cuda.set_current_device triggering
+                # a device mismatch
+                with cp.cuda.Device(self.stream.device_id):
+                    with self.stream as stream:
+                        query = self.input_queue.get(timeout=1)
+                        query = Batch.from_args(query)
+                        result = self.batch_processor.preprocess(
+                            chromosomes=query.chromosomes,
+                            start=query.starts,
+                            end=query.ends,
+                            track_indices=query.track_indices,
+                            stream=stream,
+                        )
+                        self.stream.synchronize()
+                        self._put_output_queue(query, result)
+                        self.input_queue.task_done()
             except queue.Empty:
                 self.ready.set()
                 continue
