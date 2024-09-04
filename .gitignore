@@ -131,3 +131,4 @@ bigwig_loader/_version.py
 /example_data/GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta.gz
 /example_data/bigwig
 /deleted
+.pfau.yml

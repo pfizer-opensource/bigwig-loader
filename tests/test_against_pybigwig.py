@@ -25,9 +25,9 @@ class PyBigWigCollection:
         )
 
 
-def test_same_output(bigwig_path, use_cufile):
+def test_same_output(bigwig_path):
     pybigwig_collection = PyBigWigCollection(bigwig_path, first_n_files=2)
-    collection = BigWigCollection(bigwig_path, first_n_files=2, use_cufile=use_cufile)
+    collection = BigWigCollection(bigwig_path, first_n_files=2)
 
     df = pd.read_csv(config.example_positions, sep="\t")
     df = df[df["chr"].isin(collection.get_chromosomes_present_in_all_files())]

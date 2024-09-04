@@ -12,8 +12,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data import IterableDataset
 
 from bigwig_loader import config
-from bigwig_loader.genome import Genome
-from bigwig_loader.position_sampler import PositionSampler
+from bigwig_loader.sampler.genome_sampler import GenomicSequenceBatchSampler
+from bigwig_loader.sampler.position_sampler import RandomPositionSampler
 
 
 class PyBigWigDataset:
@@ -69,8 +69,10 @@ class PyBigWigDataset:
         self.sequence_encoder = sequence_encoder
 
     def _setup_genome(self):
-        position_sampler = PositionSampler(regions_of_interest=self.regions_of_interest)
-        self.genome = Genome(
+        position_sampler = RandomPositionSampler(
+            regions_of_interest=self.regions_of_interest
+        )
+        self.genome = GenomicSequenceBatchSampler(
             self.reference_genome_path,
             sequence_length=self.sequence_length,
             position_sampler=position_sampler,

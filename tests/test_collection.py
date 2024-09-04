@@ -6,7 +6,7 @@ from bigwig_loader import config
 from bigwig_loader.collection import BigWigCollection
 from bigwig_loader.dataset import BigWigDataset
 from bigwig_loader.path import interpret_path
-from bigwig_loader.position_sampler import PositionSampler
+from bigwig_loader.sampler.position_sampler import RandomPositionSampler
 from bigwig_loader.util import sort_intervals
 
 
@@ -81,7 +81,7 @@ def test_sort_intervals(example_data_dir):
 
 
 def test_position_sampler(merged_intervals):
-    sampler = PositionSampler(merged_intervals)
+    sampler = RandomPositionSampler(merged_intervals)
     sample = next(sampler)
     assert sample[0].startswith("chr")
 

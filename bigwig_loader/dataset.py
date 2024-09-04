@@ -14,8 +14,8 @@ import pandas as pd
 
 from bigwig_loader.collection import BigWigCollection
 from bigwig_loader.cupy_functions import moving_average
-from bigwig_loader.genome import Genome
-from bigwig_loader.position_sampler import PositionSampler
+from bigwig_loader.sampler.genome_sampler import GenomicSequenceBatchSampler
+from bigwig_loader.sampler.position_sampler import RandomPositionSampler
 
 
 class BigWigDataset:
@@ -61,8 +61,6 @@ class BigWigDataset:
         repeat_same_positions: if True the positions sampler does not draw a new random collection
             of positions when the buffer runs out, but repeats the same samples. Can be used to
             check whether network can overfit.
-        use_cufile: whether to use kvikio cuFile to directly load data from file to GPU memory.
-
     """
 
     def __init__(
@@ -87,7 +85,6 @@ class BigWigDataset:
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
-        use_cufile: bool = True,
     ):
         self.batch_size = batch_size
         super_batch_size = super_batch_size or batch_size
@@ -124,7 +121,6 @@ class BigWigDataset:
             first_n_files=first_n_files,
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,
-            use_cufile=use_cufile,
         )
         self._super_batch_sequences: cp.ndarray = None
         self._super_batch_targets: cp.ndarray = None
@@ -205,7 +201,6 @@ class BigWigSuperDataset:
         repeat_same_positions: if True the positions sampler does not draw a new random collection
             of positions when the buffer runs out, but repeats the same samples. Can be used to
             check whether network can overfit.
-        use_cufile: whether to use kvikio cuFile to directly load data from file to GPU memory.
     """
 
     def __init__(
@@ -229,7 +224,6 @@ class BigWigSuperDataset:
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
-        use_cufile: bool = True,
     ):
         super().__init__()
 
@@ -263,28 +257,27 @@ class BigWigSuperDataset:
         self._file_extensions = file_extensions
         self._crawl = crawl
         self._scale = scale
-        self._genome: Optional[Genome] = None
+        self._genome: Optional[GenomicSequenceBatchSampler] = None
         self._prepared_out: Optional[cp.ndarray] = None
         self._position_sampler_buffer_size = position_sampler_buffer_size
         self._repeat_same_positions = repeat_same_positions
         self._moving_average_window_size = moving_average_window_size
-        self._use_cufile = use_cufile
 
     def reset_gpu(self) -> None:
         self.bigwig_collection.reset_gpu()
 
     @property
-    def genome(self) -> Genome:
+    def genome(self) -> GenomicSequenceBatchSampler:
         """
         Setup genome object to get sequences from the reference genome.
         """
         if not self._genome:
-            position_sampler = PositionSampler(
+            position_sampler = RandomPositionSampler(
                 regions_of_interest=self.regions_of_interest,
                 buffer_size=self._position_sampler_buffer_size,
                 repeat_same=self._repeat_same_positions,
             )
-            self._genome = Genome(
+            self._genome = GenomicSequenceBatchSampler(
                 self.reference_genome_path,
                 sequence_length=self.sequence_length,
                 position_sampler=position_sampler,
@@ -311,7 +304,6 @@ class BigWigSuperDataset:
                 crawl=self._crawl,
                 scale=self._scale,
                 first_n_files=self._first_n_files,
-                use_cufile=self._use_cufile,
             )
             return self._bigwig_collection
         else:
@@ -339,8 +331,7 @@ class BigWigSuperDataset:
     def __next__(self) -> tuple[Any, cp.ndarray]:
         if self._n < self.batches_per_epoch:
             self._n += 1
-            positions, sequences = self.genome.get_batch()
-            chromosomes, center = zip(*positions)
+            chromosomes, center, sequences = next(self.genome)
             start = np.array(center) - (self.center_bin_to_predict // 2)
             end = start + self.center_bin_to_predict
             target = self.bigwig_collection.get_batch(
