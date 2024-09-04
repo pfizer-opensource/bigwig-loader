@@ -15,7 +15,7 @@ from torch.utils.data import IterableDataset
 
 from bigwig_loader.batch import Batch
 from bigwig_loader.collection import BigWigCollection
-from bigwig_loader.dataset_new import Dataset
+from bigwig_loader.dataset import BigWigDataset
 
 
 class PytorchBatch:
@@ -175,7 +175,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         return_batch_objects: bool = False,
     ):
         super().__init__()
-        self._dataset = Dataset(
+        self._dataset = BigWigDataset(
             regions_of_interest=regions_of_interest,
             collection=collection,
             reference_genome_path=reference_genome_path,
