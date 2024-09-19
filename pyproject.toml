@@ -17,7 +17,7 @@ authors = [
 ]
 description = "Machine Learning Data Loader for Collections of BigWig Files"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["epigenetics", "bigwig", "fasta"]
 license = {text = "Apache-2.0"}
 classifiers = [
@@ -25,9 +25,9 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
     "Topic :: Utilities"
 ]

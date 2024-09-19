@@ -1,0 +1,13 @@
+# MANIFEST.in
+exclude .gitignore
+exclude .github/*
+exclude .egg-info/*
+exclude benchmark/*
+exclude docs/*
+exclude examples/*
+exclude example_data/*
+exclude images/*
+exclude .flake8
+exclude .pre-commit-config.yaml
+exclude environment.yml
+exclude tmp/*

@@ -1,28 +1,25 @@
-name: bigwig-loader
+name: bwl
 channels:
   - rapidsai
-  - rapidsai-nightly
   - conda-forge
   - nvidia
   - bioconda
 dependencies:
-  - python>=3.9,<3.11
+  - python>=3.10
   - pip
-  - cython>=0.29,<0.30
+  - cython
   - c-compiler
-
-  - kvikio>=24.06.00a
+  - kvikio>=24.06.00
   - cupy>=12.0.0
   - numpy>=1.21
   - pandas
   - pyfaidx
   - ncls
-  - htslib
+#  - htslib
   - pydantic
   - pydantic-settings
   - python-dotenv
   - universal_pathlib
   - natsort
-
   - pip:
       - -e .[dev]
