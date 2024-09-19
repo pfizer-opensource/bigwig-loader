@@ -187,7 +187,12 @@ class BigWigDataset:
         self,
     ) -> Iterator[
         tuple[cp.ndarray | list[str] | None, cp.ndarray]
-        | tuple[cp.ndarray | list[str] | None, cp.ndarray, IntSequenceType]
+        | tuple[
+            cp.ndarray | list[str] | None,
+            cp.ndarray,
+            IntSequenceType,
+            Sequence[str | Path] | None,
+        ]
         | Batch
     ]:
         with self._create_dataloader() as dataloader:
@@ -197,12 +202,20 @@ class BigWigDataset:
                     sequences = self._sequence_encoder(batch.sequences)
                 else:
                     sequences = batch.sequences
+                if batch.track_indices is not None:
+                    track_names = [
+                        self.bigwig_collection.bigwig_paths[i]
+                        for i in batch.track_indices
+                    ]
+                else:
+                    track_names = self.bigwig_collection.bigwig_paths
                 if self._return_batch_objects:
                     batch.sequences = sequences
                     batch.values = values
+                    batch.track_names = track_names
                     yield batch
                 elif batch.track_indices is not None:
-                    yield sequences, values, batch.track_indices
+                    yield sequences, values, batch.track_indices, track_names
                 else:
                     yield sequences, values
                 if i == self.batches_per_epoch - 1:

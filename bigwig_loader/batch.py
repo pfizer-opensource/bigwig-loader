@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 from typing import Sequence
 from typing import Union
@@ -51,6 +52,7 @@ class Batch:
         track_indices: IntSequenceType | None = None,
         sequences: StrSequenceType | None = None,
         values: cp.ndarray | None = None,
+        track_names: Sequence[str | Path] | None = None,
         other_batched: Sequence[Sequence[Any] | npt.NDArray[np.generic] | cp.ndarray]
         | None = None,
         other: Any = None,
@@ -63,6 +65,7 @@ class Batch:
         self.values = values
         self.other_batched = other_batched
         self.other = other
+        self.track_names = track_names
 
     @classmethod
     def from_args(cls, args: Union["Batch", IntervalType, dict[str, Any]]) -> "Batch":
@@ -88,6 +91,7 @@ class Batch:
             track_indices=self.track_indices,
             sequences=self.sequences[item] if self.sequences is not None else None,
             values=self.values[item] if self.values is not None else None,
+            track_names=self.track_names,
             other_batched=[x[item] for x in self.other_batched]
             if self.other_batched is not None
             else None,
