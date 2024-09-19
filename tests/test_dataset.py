@@ -45,7 +45,9 @@ def test_output_shape(dataset):
 
 
 def test_output_shape_sub_sampled_tracks(dataset_with_track_sampling):
-    for i, (sequence, values, track_indices) in enumerate(dataset_with_track_sampling):
+    for i, (sequence, values, track_indices, track_names) in enumerate(
+        dataset_with_track_sampling
+    ):
         print(i, "---", flush=True)
         assert len(track_indices) == 1
         assert values.shape == (265, 1, 250)
