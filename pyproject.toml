@@ -33,6 +33,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy",
+    "cupy",
     "cython",
     "pandas",
     "ncls",

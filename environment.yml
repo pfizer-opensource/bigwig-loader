@@ -1,4 +1,4 @@
-name: bwl
+name: bigwig-loader
 channels:
   - rapidsai
   - conda-forge
@@ -15,7 +15,6 @@ dependencies:
   - pandas
   - pyfaidx
   - ncls
-#  - htslib
   - pydantic
   - pydantic-settings
   - python-dotenv
