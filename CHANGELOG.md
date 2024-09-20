@@ -9,11 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ...
 
-## [v0.22.1]
+## [v0.0.2]
+### Fixed
+- fixed bug in the CI
 
 ## [v0.0.1] - 2024-09-20
 ### Added
 - release to pypi
 
-[Unreleased]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.0.2...HEAD
+[v0.0.2]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.0.1...v0.0.2
 [v0.0.1]: https://github.com/pfizer-opensource/bigwig-loader/tree/v0.0.1
