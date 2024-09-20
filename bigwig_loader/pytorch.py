@@ -15,7 +15,7 @@ from torch.utils.data import IterableDataset
 
 from bigwig_loader.batch import Batch
 from bigwig_loader.collection import BigWigCollection
-from bigwig_loader.dataset_new import Dataset
+from bigwig_loader.dataset import BigWigDataset
 
 
 class PytorchBatch:
@@ -60,6 +60,7 @@ class PytorchBatch:
         sequences: torch.Tensor | list[str] | None,
         other_batched: Any | None,
         other: Any,
+        track_names: Sequence[str | Path] | None = None,
     ):
         self.chromosomes = chromosomes
         self.starts = starts
@@ -69,6 +70,7 @@ class PytorchBatch:
         self.values = values
         self.other_batched = other_batched
         self.other = other
+        self.track_names = track_names
 
     @classmethod
     def from_batch(cls, batch: Batch) -> "PytorchBatch":
@@ -87,6 +89,7 @@ class PytorchBatch:
             sequences=cls._convert_if_possible(batch.sequences),
             other_batched=other_batched,
             other=cls._convert_if_possible(batch.other),
+            track_names=batch.track_names,
         )
 
     @staticmethod
@@ -99,7 +102,9 @@ class PytorchBatch:
 GENOMIC_SEQUENCE_TYPE = Union[torch.Tensor, list[str], None]
 BATCH_TYPE = Union[
     tuple[GENOMIC_SEQUENCE_TYPE, torch.Tensor],
-    tuple[GENOMIC_SEQUENCE_TYPE, torch.Tensor, torch.Tensor],
+    tuple[
+        GENOMIC_SEQUENCE_TYPE, torch.Tensor, torch.Tensor, Sequence[str | Path] | None
+    ],
     PytorchBatch,
 ]
 
@@ -175,7 +180,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         return_batch_objects: bool = False,
     ):
         super().__init__()
-        self._dataset = Dataset(
+        self._dataset = BigWigDataset(
             regions_of_interest=regions_of_interest,
             collection=collection,
             reference_genome_path=reference_genome_path,
@@ -209,7 +214,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
             elif pytorch_batch.track_indices is None:
                 yield pytorch_batch.sequences, pytorch_batch.values
             else:
-                yield pytorch_batch.sequences, pytorch_batch.values, pytorch_batch.track_indices
+                yield pytorch_batch.sequences, pytorch_batch.values, pytorch_batch.track_indices, pytorch_batch.track_names
 
     def reset_gpu(self) -> None:
         self._dataset.reset_gpu()

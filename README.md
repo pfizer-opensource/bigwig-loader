@@ -38,12 +38,12 @@ dataset = BigWigDataset(
     reference_genome_path=reference_genome,
     sequence_length=1000,
     center_bin_to_predict=1000,
+    window_size=1,
     batch_size=256,
     super_batch_size=1024,
     batches_per_epoch=20,
     maximum_unknown_bases_fraction=0.1,
     sequence_encoder="onehot",
-    use_cufile=True,
 )
 
 for encoded_sequences, epigenetics_profiles in dataset:
