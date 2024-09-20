@@ -15,6 +15,7 @@ name = "bigwig_loader"
 authors = [
     {name = "Joren Retel", email = "joren.retel@pfizer.com"},
 ]
+url = "https://github.com/pfizer-opensource/bigwig-loader"
 description = "Machine Learning Data Loader for Collections of BigWig Files"
 readme = "README.md"
 requires-python = ">=3.10"
