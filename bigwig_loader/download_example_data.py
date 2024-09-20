@@ -1,6 +1,7 @@
+import gzip
 import hashlib
 import logging
-import subprocess
+import shutil
 import urllib.request
 from pathlib import Path
 from typing import BinaryIO
@@ -21,13 +22,22 @@ def get_reference_genome(reference_genome_path: Path = config.reference_genome) 
     if reference_genome_path.exists():
         return reference_genome_path
     elif compressed_file.exists():
-        subprocess.run(["bgzip", "-d", compressed_file])
+        # subprocess.run(["bgzip", "-d", compressed_file])
+        unzip_gz_file(compressed_file, reference_genome_path)
     else:
         LOGGER.info("Need reference genome for tests. Downloading it from ENCODE.")
         url = "https://www.encodeproject.org/files/GRCh38_no_alt_analysis_set_GCA_000001405.15/@@download/GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta.gz"
         urllib.request.urlretrieve(url, compressed_file)
-        subprocess.run(["bgzip", "-d", compressed_file])
+        # subprocess.run(["bgzip", "-d", compressed_file])
+        unzip_gz_file(compressed_file, reference_genome_path)
     return reference_genome_path
+
+
+def unzip_gz_file(compressed_file_path: Path, output_file_path: Path) -> Path:
+    with gzip.open(compressed_file_path, "rb") as gz_file:
+        with open(output_file_path, "wb") as output_file:
+            shutil.copyfileobj(gz_file, output_file)
+    return output_file_path
 
 
 EXAMPLE_FILES = {

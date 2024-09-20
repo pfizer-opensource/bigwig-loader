@@ -5,9 +5,12 @@ exclude .egg-info/*
 exclude benchmark/*
 exclude docs/*
 exclude examples/*
-exclude example_data/*
+exclude example_data/
 exclude images/*
 exclude .flake8
 exclude .pre-commit-config.yaml
 exclude environment.yml
 exclude tmp/*
+
+include example_data/some_intervals.tsv
+include example_data/some_positions.tsv
