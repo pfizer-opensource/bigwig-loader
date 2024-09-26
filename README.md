@@ -172,6 +172,18 @@ anything is unclear, please open an issue.
 4. `pip install -e '.[dev]'`
 5. run `pre-commit install` to install the pre-commit hooks
 
+### Run Tests
+Tests are in the tests directory. One of the most important tests is
+test_against_pybigwig which makes sure that if there is a mistake in
+pyBigWIg, it is also in bigwig-loader.
+
+```shell
+pytest -vv .
+```
+
+When github runners with GPU's will become available we would also
+like to run these tests in the CI. But for now, you can run them locally.
+
 
 ## Citing
 
