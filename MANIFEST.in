@@ -1,7 +1,7 @@
 # MANIFEST.in
 exclude .gitignore
 exclude .github/*
-exclude .egg-info/*
+exclude *.egg-info/*
 exclude benchmark/*
 exclude docs/*
 exclude examples/*
