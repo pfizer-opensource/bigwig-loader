@@ -104,6 +104,7 @@ class BatchProcessor:
         end: Union[Sequence[int], npt.NDArray[np.int64]],
         window_size: int = 1,
         scaling_factors_cupy: Optional[cp.ndarray] = None,
+        default_value: float = 0.0,
         out: Optional[cp.ndarray] = None,
     ) -> cp.ndarray:
         (
@@ -137,10 +138,10 @@ class BatchProcessor:
             query_starts=abs_start,
             query_ends=abs_end,
             window_size=window_size,
+            default_value=default_value,
             out=out,
         )
         batch = cp.transpose(out, (1, 0, 2))
         if scaling_factors_cupy is not None:
             batch *= scaling_factors_cupy
-
         return batch

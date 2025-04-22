@@ -108,6 +108,7 @@ class StreamedDataloader:
         queue_size: int = 10,
         slice_size: int | None = None,
         window_size: int = 1,
+        default_value: float = 0.0,
     ):
         self.input_generator = input_generator
         self.collection = collection
@@ -127,6 +128,7 @@ class StreamedDataloader:
         self.data_generator_thread: threading.Thread | None = None
         self._entered = False
         self._out = None
+        self._default_value = default_value
 
     def __enter__(self) -> "StreamedDataloader":
         self._entered = True
@@ -214,6 +216,7 @@ class StreamedDataloader:
                             found_starts=found_starts[:, select],
                             found_ends=found_ends[:, select],
                             window_size=self.window_size,
+                            default_value=self._default_value,
                             out=out,
                         )
 
@@ -248,7 +251,7 @@ class StreamedDataloader:
         shape = (number_of_tracks, batch_size, sequence_length)
 
         if self._out is None or self._out.shape != shape:
-            self._out = cp.zeros(shape, dtype=cp.float32)
+            self._out = cp.full(shape, self._default_value, dtype=cp.float32)
         return self._out
 
     def _determine_slice_size(self, n_samples: int) -> int:

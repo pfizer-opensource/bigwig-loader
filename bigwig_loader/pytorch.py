@@ -124,8 +124,8 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         reference_genome_path: path to fasta file containing the reference genome.
         sequence_length: number of base pairs in input sequence
         center_bin_to_predict: if given, only do prediction on a central window. Should be
-            smaller than or equal to sequence_length. If not given will be the same as
-            sequence_length.
+            smaller than or equal to sequence_length. If None, the whole sequence length
+            will be used. Default: None
         window_size: used to down sample the resolution of the target from sequence_length
         moving_average_window_size: window size for moving average on the target. Can
             help too smooth out the target. Default: 1, which means no smoothing. If
@@ -141,8 +141,21 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         maximum_unknown_bases_fraction: maximum number of bases in an input sequence that
             is unknown.
         sequence_encoder: encoder to apply to the sequence. Default: bigwig_loader.util.onehot_sequences
-        position_samples_buffer_size: number of intervals picked up front by the position sampler.
+        file_extensions: load files with these extensions (default .bw and .bigWig)
+        crawl: whether to search in sub-directories for BigWig files
+        scale: Optional, dictionary with scaling factors for each BigWig file.
+            If None, no scaling is done. Keys can be (partial) file paths. See
+            bigwig_loader.path.match_key_to_path for more information about how
+            dict keys are mapped to paths.
+        default_value: value to use for intervals that are not present in the
+            bigwig file. Defaults to 0.0. Can be set to cp.nan to differentiate
+            between missing values listed as 0.0.
+        first_n_files: Only use the first n files (handy for debugging on less tasks)
+        position_sampler_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
+        repeat_same_positions: if True the positions sampler does not draw a new random collection
+            of positions when the buffer runs out, but repeats the same samples. Can be used to
+            check whether network can overfit.
         sub_sample_tracks: int, if set a  different random set of tracks is selected in each
             superbatch from the total number of tracks. The indices corresponding to those tracks
             are returned in the output.
@@ -160,7 +173,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         collection: Union[str, Sequence[str], Path, Sequence[Path], BigWigCollection],
         reference_genome_path: Path,
         sequence_length: int = 1000,
-        center_bin_to_predict: Optional[int] = 200,
+        center_bin_to_predict: Optional[int] = None,
         window_size: int = 1,
         moving_average_window_size: int = 1,
         batch_size: int = 256,
@@ -172,6 +185,8 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         ] = "onehot",
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
+        scale: Optional[dict[Union[str | Path], Any]] = None,
+        default_value: float = 0.0,
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
@@ -195,6 +210,8 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
             sequence_encoder=sequence_encoder,
             file_extensions=file_extensions,
             crawl=crawl,
+            scale=scale,
+            default_value=default_value,
             first_n_files=first_n_files,
             position_sampler_buffer_size=position_sampler_buffer_size,
             repeat_same_positions=repeat_same_positions,

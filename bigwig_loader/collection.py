@@ -140,6 +140,7 @@ class BigWigCollection:
         start: Union[Sequence[int], npt.NDArray[np.int64]],
         end: Union[Sequence[int], npt.NDArray[np.int64]],
         window_size: int = 1,
+        default_value: float = 0.0,
         out: Optional[cp.ndarray] = None,
     ) -> cp.ndarray:
         return self.batch_processor.get_batch(
@@ -148,6 +149,7 @@ class BigWigCollection:
             end=end,
             window_size=window_size,
             scaling_factors_cupy=self.scaling_factors_cupy,
+            default_value=default_value,
             out=out,
         )
 

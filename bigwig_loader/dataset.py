@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 from typing import Callable
 from typing import Iterator
+from typing import Literal
 from typing import Optional
 from typing import Sequence
 from typing import Union
@@ -38,8 +39,8 @@ class BigWigDataset:
         reference_genome_path: path to fasta file containing the reference genome.
         sequence_length: number of base pairs in input sequence
         center_bin_to_predict: if given, only do prediction on a central window. Should be
-            smaller than or equal to sequence_length. If not given will be the same as
-            sequence_length.
+            smaller than or equal to sequence_length. If None, the whole sequence length
+            will be used. Default: None
         window_size: used to down sample the resolution of the target from sequence_length
         moving_average_window_size: window size for moving average on the target. Can
             help too smooth out the target. Default: 1, which means no smoothing. If
@@ -47,7 +48,7 @@ class BigWigDataset:
             then smoothed.
         batch_size: batch size
         super_batch_size: batch size that is used in the background to load data from
-            bigwig files. Should be larget than or equal to batch_size. If None, it will
+            bigwig files. Should be larger than or equal to batch_size. If None, it will
             be equal to batch_size.
         batches_per_epoch: because the length of an epoch is slightly arbitrary here,
             the number of batches can be set by hand. If not the number of batches per
@@ -61,6 +62,9 @@ class BigWigDataset:
             If None, no scaling is done. Keys can be (partial) file paths. See
             bigwig_loader.path.match_key_to_path for more information about how
             dict keys are mapped to paths.
+        default_value: value to use for intervals that are not present in the
+            bigwig file. Defaults to 0.0. Can be set to cp.nan to differentiate
+            between missing values listed as 0.0.
         first_n_files: Only use the first n files (handy for debugging on less tasks)
         position_sampler_buffer_size: number of intervals picked up front by the position sampler.
             When all intervals are used, new intervals are picked.
@@ -73,7 +77,7 @@ class BigWigDataset:
         n_threads: number of python threads / cuda streams to use for loading the data to
             GPU. More threads means that more IO can take place while the GPU is busy doing
             calculations (decompressing or neural network training for example). More threads
-            also means a higher GPU memory usage.
+            also means a higher GPU memory usage. Default: 4
         return_batch_objects: if True, the batches will be returned as instances of
             bigwig_loader.batch.Batch
     """
@@ -92,11 +96,12 @@ class BigWigDataset:
         batches_per_epoch: Optional[int] = None,
         maximum_unknown_bases_fraction: float = 0.1,
         sequence_encoder: Optional[
-            Union[Callable[[Sequence[str]], Any], str]
+            Union[Callable[[Sequence[str]], Any], Literal["onehot"]]
         ] = "onehot",
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
         scale: Optional[dict[Union[str | Path], Any]] = None,
+        default_value: float = 0.0,
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
         repeat_same_positions: bool = False,
@@ -139,6 +144,7 @@ class BigWigDataset:
         self._first_n_files = first_n_files
         self._file_extensions = file_extensions
         self._crawl = crawl
+        self._default_value = default_value
         self._scale = scale
         self._position_sampler_buffer_size = position_sampler_buffer_size
         self._repeat_same_positions = repeat_same_positions
@@ -181,6 +187,7 @@ class BigWigDataset:
             queue_size=self._n_threads + 1,
             slice_size=self.batch_size,
             window_size=self.window_size,
+            default_value=self._default_value,
         )
 
     def __iter__(
