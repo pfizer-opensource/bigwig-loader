@@ -173,7 +173,8 @@ class BigWigCollection:
 
         """
         offsets = np.array(
-            [self.chromosome_offset_dict[chrom] for chrom in chromosomes]
+            [self.chromosome_offset_dict[chrom] for chrom in chromosomes],
+            dtype=np.int64,
         )
         return positions + offsets
 
