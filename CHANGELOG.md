@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [Unreleased]
+...
+
+## [v0.1.5]
 ### Added
 - set a default value different from 0.0
 
@@ -44,7 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - release to pypi
 
-[Unreleased]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.5...HEAD
+[v0.1.5]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.4...v0.1.5
 [v0.1.4]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.3...v0.1.4
 [v0.1.3]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.2...v0.1.3
 [v0.1.2]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.1...v0.1.2
