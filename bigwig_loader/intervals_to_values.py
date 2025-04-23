@@ -8,8 +8,6 @@ from bigwig_loader.searchsorted import interval_searchsorted
 
 CUDA_KERNEL_DIR = Path(__file__).parent.parent / "cuda_kernels"
 
-_zero = cp.asarray(0.0, dtype=cp.float32).item()
-
 
 def get_cuda_kernel() -> str:
     with open(CUDA_KERNEL_DIR / "intervals_to_values.cu") as f:
@@ -31,6 +29,7 @@ def intervals_to_values(
     found_ends: cp.ndarray | None = None,
     sizes: cp.ndarray | None = None,
     window_size: int = 1,
+    default_value: float = 0.0,
     out: cp.ndarray | None = None,
 ) -> cp.ndarray:
     """
@@ -58,6 +57,8 @@ def intervals_to_values(
         sizes: number of elements in track_starts/track_ends/track_values for each track.
             Only needed when found_starts and found_ends are not given.
         window_size: size in basepairs to average over (default: 1)
+        default_value: value to use for regions where no data is specified (default: 0.0)
+        out: array of size n_tracks x batch_size x sequence_length to store the output.
     Returns:
         out: array of size n_tracks x batch_size x sequence_length
 
@@ -85,12 +86,15 @@ def intervals_to_values(
         )
 
     if out is None:
-        out = cp.zeros(
+        out = cp.full(
             (found_starts.shape[0], len(query_starts), sequence_length // window_size),
+            default_value,
             dtype=cp.float32,
         )
     else:
-        out *= _zero
+        logging.debug(f"Setting default value in output tensor to {default_value}")
+        out.fill(default_value)
+        logging.debug(out)
 
     max_number_intervals = min(
         sequence_length, (found_ends - found_starts).max().item()
@@ -136,7 +140,6 @@ def intervals_to_values(
             out,
         ),
     )
-
     return out
 
 

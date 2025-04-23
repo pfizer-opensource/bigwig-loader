@@ -57,6 +57,29 @@ def test_get_batch(collection):
     assert batch.shape == (256, n_files, 1000)
 
 
+def test_get_batch_with_nans(collection):
+    """
+    Testing whether NaNs are returned when setting
+    the default_value to cp.nan. Giving it some
+    coordinates way beyond the total chromosome
+    length now because the bigwigs I am testing
+    on include intervals with value 0.0 instead
+    of just not listing it.
+    """
+    n_files = len(collection.bigwig_paths)
+
+    batch = collection.get_batch(
+        ["chr1", "chr20", "chr4"],
+        [0, 99998999, 99998999],
+        [1000, 99999999, 99999999],
+        default_value=cp.nan,
+    )
+
+    print(batch)
+    assert batch.shape == (3, n_files, 1000)
+    assert cp.any(cp.isnan(batch))
+
+
 def test_exclude_intervals(collection):
     intervals = collection.intervals(
         ["chr3", "chr4", "chr5"], exclude_chromosomes=["chr4"]

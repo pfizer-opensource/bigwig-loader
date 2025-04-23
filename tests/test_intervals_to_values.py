@@ -230,3 +230,34 @@ def test_get_values_from_intervals_batch_multiple_tracks() -> None:
     print(expected)
     print(values)
     assert (values == expected).all()
+
+
+def test_default_nan() -> None:
+    """Query end is exactly at end index before "gap"
+       Now instead of zeros, NaN values should be
+       used.
+    ."""
+    track_starts = cp.asarray([5, 10, 12, 18], dtype=cp.int32)
+    track_ends = cp.asarray([10, 12, 14, 20], dtype=cp.int32)
+    track_values = cp.asarray([20.0, 30.0, 40.0, 50.0], dtype=cp.dtype("f4"))
+    query_starts = cp.asarray([7, 9], dtype=cp.int32)
+    query_ends = cp.asarray([18, 20], dtype=cp.int32)
+    reserved = cp.zeros([2, 11], dtype=cp.dtype("<f4"))
+    values = intervals_to_values(
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        default_value=cp.nan,
+        out=reserved,
+    )
+    expected = cp.asarray(
+        [
+            [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, cp.nan, cp.nan, cp.nan, cp.nan],
+            [20.0, 30.0, 30.0, 40.0, 40.0, cp.nan, cp.nan, cp.nan, cp.nan, 50.0, 50.0],
+        ]
+    )
+    print(expected)
+    print(values)
+    assert cp.allclose(values, expected, equal_nan=True)
