@@ -1,5 +1,6 @@
 import logging
 import math
+from math import isnan
 from pathlib import Path
 
 import cupy as cp
@@ -120,6 +121,7 @@ def intervals_to_values(
     array_start = cp.ascontiguousarray(array_start)
     array_end = cp.ascontiguousarray(array_end)
     array_value = cp.ascontiguousarray(array_value)
+    default_value_isnan = isnan(default_value)
 
     cuda_kernel(
         (grid_size,),
@@ -137,6 +139,8 @@ def intervals_to_values(
             sequence_length,
             max_number_intervals,
             window_size,
+            default_value,
+            default_value_isnan,
             out,
         ),
     )
