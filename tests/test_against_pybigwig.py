@@ -26,8 +26,8 @@ class PyBigWigCollection:
 
 
 def test_same_output(bigwig_path):
-    pybigwig_collection = PyBigWigCollection(bigwig_path, first_n_files=2)
-    collection = BigWigCollection(bigwig_path, first_n_files=2)
+    pybigwig_collection = PyBigWigCollection(bigwig_path, first_n_files=3)
+    collection = BigWigCollection(bigwig_path, first_n_files=3)
 
     df = pd.read_csv(config.example_positions, sep="\t")
     df = df[df["chr"].isin(collection.get_chromosomes_present_in_all_files())]
@@ -49,3 +49,31 @@ def test_same_output(bigwig_path):
     print(this_batch[pybigwig_batch != this_batch])
     print(pybigwig_batch[pybigwig_batch != this_batch])
     assert (pybigwig_batch == this_batch).all()
+
+
+def test_same_output_with_nans(bigwig_path):
+    pybigwig_collection = PyBigWigCollection(bigwig_path, first_n_files=3)
+    collection = BigWigCollection(bigwig_path, first_n_files=3)
+
+    df = pd.read_csv(config.example_positions, sep="\t")
+    df = df[df["chr"].isin(collection.get_chromosomes_present_in_all_files())]
+    chromosomes, starts, ends = (
+        list(df["chr"]),
+        list(df["center"] - 1000),
+        list(df["center"] + 1000),
+    )
+
+    pybigwig_batch = pybigwig_collection.get_batch(chromosomes, starts, ends)
+
+    this_batch = collection.get_batch(
+        chromosomes, starts, ends, default_value=np.nan
+    ).get()
+    print("PyBigWig:")
+    print(pybigwig_batch)
+    print(type(this_batch), "shape:", pybigwig_batch.shape)
+    print("This Library:")
+    print(this_batch)
+    print(type(this_batch), "shape:", this_batch.shape)
+    print(this_batch[pybigwig_batch != this_batch])
+    print(pybigwig_batch[pybigwig_batch != this_batch])
+    assert np.allclose(pybigwig_batch, this_batch, equal_nan=True)
