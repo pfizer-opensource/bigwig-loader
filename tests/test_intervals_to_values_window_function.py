@@ -37,7 +37,7 @@ def test_get_values_from_intervals_window(default_value) -> None:
     assert (values == expected).all()
 
 
-@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+@pytest.mark.parametrize("default_value", [0.0, cp.nan, 5.6, 10.0, 7565])
 def test_get_values_from_intervals_edge_case_1(default_value) -> None:
     """Query start is somewhere in a "gap"."""
     track_starts = cp.asarray([1, 10, 12, 16], dtype=cp.int32)
@@ -45,7 +45,7 @@ def test_get_values_from_intervals_edge_case_1(default_value) -> None:
     track_values = cp.asarray([20.0, 30.0, 40.0, 50.0], dtype=cp.dtype("f4"))
     query_starts = cp.asarray([6], dtype=cp.int32)
     query_ends = cp.asarray([18], dtype=cp.int32)
-    reserved = cp.zeros((1, 4), dtype=cp.dtype("<f4"))
+    # reserved = cp.zeros((1, 4), dtype=cp.dtype("<f4"))
     values = intervals_to_values(
         track_starts,
         track_ends,
@@ -53,16 +53,19 @@ def test_get_values_from_intervals_edge_case_1(default_value) -> None:
         query_starts,
         query_ends,
         default_value=default_value,
-        out=reserved,
         window_size=3,
     )
     x = default_value
     if isnan(default_value):
         expected = cp.asarray([[x, 30.0, 40.0, 46.666668]])
+    elif default_value != 0:
+        expected = cp.asarray([[x, (x + 30.0 + 30.0) / 3, 40.0, 46.666668]])
     else:
         expected = cp.asarray([[x, 20.0, 40.0, 46.666668]])
 
+    print("expected:")
     print(expected)
+    print("actual:")
     print(values)
 
     assert (
@@ -227,7 +230,9 @@ def test_get_values_from_intervals_batch_of_2(default_value) -> None:
         expected = cp.asarray(
             [[20.0, 26.666666, 26.666666, 0.0], [23.333334, 36.666668, 0.0, 33.333332]]
         )
+    print("expected:")
     print(expected)
+    print("actual:")
     print(values)
     assert cp.allclose(values, expected, equal_nan=True)
 
@@ -621,8 +626,10 @@ def test_combinations_window_size_batch_size_n_tracks_on_random_data(
         query_ends,
         sizes=sizes,
         window_size=1,
-        default_value=default_value,
+        default_value=cp.nan,
     )
+
+    cp.nan_to_num(values_with_window_size_1, copy=False, nan=default_value)
 
     reduced_dim = sequence_length // window_size
     full_matrix = values_with_window_size_1[:, :, : reduced_dim * window_size]
