@@ -3,7 +3,13 @@ from typing import Iterator
 import numpy as np
 import pandas as pd
 
-from bigwig_loader.util import make_cumulative_index_intervals
+
+def make_cumulative_index_intervals(intervals: pd.DataFrame) -> pd.DataFrame:
+    intervals.reset_index(drop=True, inplace=True)
+    intervals.index = (
+        (intervals["end"] - intervals["start"]).cumsum().shift().fillna(0).astype(int)  # type: ignore
+    )
+    return intervals
 
 
 class RandomPositionSampler:
@@ -22,6 +28,8 @@ class RandomPositionSampler:
         self._repeat_same = repeat_same
 
     def __iter__(self) -> Iterator[tuple[str, int]]:
+        if self._repeat_same:
+            self._index = 0
         return self
 
     def __next__(self) -> tuple[str, int]:
@@ -36,6 +44,7 @@ class RandomPositionSampler:
         return chromosome, center
 
     def _refresh_buffer(self) -> None:
+        print("refresh buffer called")
         batch_rand = np.random.randint(
             low=0, high=self._max_index, size=self.buffer_size
         )

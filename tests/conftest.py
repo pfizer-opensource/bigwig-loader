@@ -5,11 +5,11 @@ import pandas as pd
 import pytest
 
 from bigwig_loader import config
+from bigwig_loader.download_example_data import get_example_bigwigs_files
+from bigwig_loader.download_example_data import get_reference_genome
 
 try:
     from bigwig_loader.collection import BigWigCollection
-    from bigwig_loader.download_example_data import get_example_bigwigs_files
-    from bigwig_loader.download_example_data import get_reference_genome
 except ImportError:
     logging.warning(
         "Can not import from bigwig_loader.collection without cupy installed"

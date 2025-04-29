@@ -2,6 +2,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 from typing import Callable
+from typing import Iterable
 from typing import Iterator
 from typing import Literal
 from typing import Optional
@@ -78,6 +79,12 @@ class BigWigDataset:
             GPU. More threads means that more IO can take place while the GPU is busy doing
             calculations (decompressing or neural network training for example). More threads
             also means a higher GPU memory usage. Default: 4
+        custom_position_sampler: if set, this sampler will be used instead of the default
+            position sampler (which samples randomly and uniform from regions of interest)
+            This should be an iterable of tuples (chromosome, center).
+        custom_track_sampler: if specified, this sampler will be used to sample tracks. When not
+            specified, each batch simply contains all tracks, or a randomly sellected subset of
+            tracks in case sub_sample_tracks is set. Should be Iterable batches of track indices.
         return_batch_objects: if True, the batches will be returned as instances of
             bigwig_loader.batch.Batch
     """
@@ -107,6 +114,8 @@ class BigWigDataset:
         repeat_same_positions: bool = False,
         sub_sample_tracks: Optional[int] = None,
         n_threads: int = 4,
+        custom_position_sampler: Optional[Iterable[tuple[str, int]]] = None,
+        custom_track_sampler: Optional[Iterable[list[int]]] = None,
         return_batch_objects: bool = False,
     ):
         super().__init__()
@@ -152,32 +161,34 @@ class BigWigDataset:
         self._sub_sample_tracks = sub_sample_tracks
         self._n_threads = n_threads
         self._return_batch_objects = return_batch_objects
-
-    def _create_dataloader(self) -> StreamedDataloader:
-        position_sampler = RandomPositionSampler(
+        self._position_sampler = custom_position_sampler or RandomPositionSampler(
             regions_of_interest=self.regions_of_interest,
             buffer_size=self._position_sampler_buffer_size,
             repeat_same=self._repeat_same_positions,
         )
+        if custom_track_sampler is not None:
+            self._track_sampler: Optional[Iterable[list[int]]] = custom_track_sampler
+        elif sub_sample_tracks is not None:
+            self._track_sampler = TrackSampler(
+                total_number_of_tracks=len(self.bigwig_collection),
+                sample_size=sub_sample_tracks,
+            )
+        else:
+            self._track_sampler = None
 
+    def _create_dataloader(self) -> StreamedDataloader:
         sequence_sampler = GenomicSequenceSampler(
             reference_genome_path=self.reference_genome_path,
             sequence_length=self.sequence_length,
-            position_sampler=position_sampler,
+            position_sampler=self._position_sampler,
             maximum_unknown_bases_fraction=self.maximum_unknown_bases_fraction,
         )
-        track_sampler = None
-        if self._sub_sample_tracks is not None:
-            track_sampler = TrackSampler(
-                total_number_of_tracks=len(self.bigwig_collection),
-                sample_size=self._sub_sample_tracks,
-            )
 
         query_batch_generator = QueryBatchGenerator(
             genomic_location_sampler=sequence_sampler,
             center_bin_to_predict=self.center_bin_to_predict,
             batch_size=self.super_batch_size,
-            track_sampler=track_sampler,
+            track_sampler=self._track_sampler,
         )
 
         return StreamedDataloader(

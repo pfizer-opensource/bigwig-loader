@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 from typing import Callable
+from typing import Iterable
 from typing import Iterator
 from typing import Literal
 from typing import Optional
@@ -165,6 +166,12 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
             also means a higher GPU memory usage. Default: 4
         return_batch_objects: if True, the batches will be returned as instances of
             bigwig_loader.pytorch.PytorchBatch
+        custom_position_sampler: if set, this sampler will be used instead of the default
+            position sampler (which samples randomly and uniform from regions of interest)
+            This should be an iterable of tuples (chromosome, center).
+        custom_track_sampler: if specified, this sampler will be used to sample tracks. When not
+            specified, each batch simply contains all tracks, or a randomly sellected subset of
+            tracks in case sub_sample_tracks is set. Should be Iterable batches of track indices.
     """
 
     def __init__(
@@ -192,6 +199,8 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         repeat_same_positions: bool = False,
         sub_sample_tracks: Optional[int] = None,
         n_threads: int = 4,
+        custom_position_sampler: Optional[Iterable[tuple[str, int]]] = None,
+        custom_track_sampler: Optional[Iterable[list[int]]] = None,
         return_batch_objects: bool = False,
     ):
         super().__init__()
@@ -217,6 +226,8 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
             repeat_same_positions=repeat_same_positions,
             sub_sample_tracks=sub_sample_tracks,
             n_threads=n_threads,
+            custom_position_sampler=custom_position_sampler,
+            custom_track_sampler=custom_track_sampler,
             return_batch_objects=True,
         )
         self._return_batch_objects = return_batch_objects
