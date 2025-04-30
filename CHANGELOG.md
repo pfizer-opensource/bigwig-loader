@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ...
 
+## [v0.2.0]
+### Fixed
+- fixed a bug in the intervals to values cuda kernel that
+  introduced zeros in places where there should be
+  "default_value" (see release v0.1.5).
+### Added
+- custom_position_sampler argument to bigwig_loader.dataset.BigWigDataset
+  and bigwig_loader.pytorch.PytorchBigWigDataset to optionally overwrite the
+  default random sampling of genomic coordinates from "regions of interest."
+- custom_track_sampler argument to bigwig_loader.dataset.BigWigDataset
+  and bigwig_loader.pytorch.PytorchBigWigDataset to optionally use a different
+  track sampling strategy.
+
 ## [v0.1.5]
 ### Added
 - set a default value different from 0.0
@@ -47,7 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - release to pypi
 
-[Unreleased]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.2.0...HEAD
+[v0.1.6]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.5...v0.2.0
 [v0.1.5]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.4...v0.1.5
 [v0.1.4]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.3...v0.1.4
 [v0.1.3]: https://github.com/pfizer-opensource/bigwig-loader/compare/v0.1.2...v0.1.3
