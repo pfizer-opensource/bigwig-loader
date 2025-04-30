@@ -73,3 +73,38 @@ def test_batch_return_type(bigwig_path, reference_genome_path, merged_intervals)
     for i, batch in enumerate(dataset):
         assert isinstance(batch, Batch)
         assert batch.track_indices is not None
+
+
+def test_positions_are_reproducible(
+    bigwig_path, reference_genome_path, merged_intervals
+):
+    batch_size = 16
+
+    dataset = BigWigDataset(
+        regions_of_interest=merged_intervals,
+        collection=bigwig_path,
+        reference_genome_path=reference_genome_path,
+        sequence_length=2000,
+        center_bin_to_predict=1000,
+        window_size=4,
+        batch_size=batch_size,
+        batches_per_epoch=10,
+        maximum_unknown_bases_fraction=0.1,
+        first_n_files=2,
+        repeat_same_positions=True,
+        n_threads=1,
+        return_batch_objects=True,
+    )
+
+    starts_a = [
+        position
+        for batch in dataset
+        for position in zip(batch.chromosomes, batch.starts)
+    ]
+    starts_b = [
+        position
+        for batch in dataset
+        for position in zip(batch.chromosomes, batch.starts)
+    ]
+
+    assert starts_a == starts_b

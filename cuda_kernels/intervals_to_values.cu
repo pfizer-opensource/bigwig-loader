@@ -1,3 +1,5 @@
+#include <math_constants.h>
+
 extern "C" __global__
 void intervals_to_values(
         const unsigned int* query_starts,
@@ -12,6 +14,8 @@ void intervals_to_values(
         const int sequence_length,
         const int max_number_intervals,
         const int window_size,
+        const float default_value,
+        const bool default_value_isnan,
         float* out
 ) {
 
@@ -49,7 +53,7 @@ void intervals_to_values(
 		}
 	} else {
 
-		int track_index = i / batch_size;
+// 		int track_index = i / batch_size;
 
 		int found_start_index = found_starts[i];
 		int found_end_index = found_ends[i];
@@ -59,6 +63,8 @@ void intervals_to_values(
 		int cursor = found_start_index;
 		int window_index = 0;
 		float summation = 0.0f;
+		int valid_count = 0;
+
 
 		int reduced_dim = sequence_length / window_size;
 
@@ -73,19 +79,34 @@ void intervals_to_values(
 			int end_index = min(interval_end, query_end) - query_start;
 
 			if (start_index >= window_end) {
-				out[i * reduced_dim + window_index] = summation / window_size;
+			    if (default_value_isnan) {
+					out[i * reduced_dim + window_index] = valid_count > 0 ? summation / valid_count : CUDART_NAN_F;
+			    } else {
+			        summation = summation + (window_size - valid_count) * default_value;
+			        out[i * reduced_dim + window_index] = summation / window_size;
+			    }
 				summation = 0.0f;
+				valid_count = 0;
 				window_index += 1;
 				continue;
 			}
 
 			int number = min(window_end, end_index) - max(window_start, start_index);
 
-			summation += number * track_values[cursor];
+			if (number > 0) {
+				summation += number * track_values[cursor];
+				valid_count += number;
+			}
 
 			if (end_index >= window_end || cursor + 1 >= found_end_index) {
-				out[i * reduced_dim + window_index] = summation / window_size;
-				summation = 0.0f;
+			    if (default_value_isnan) {
+					out[i * reduced_dim + window_index] = valid_count > 0 ? summation / valid_count : CUDART_NAN_F;
+			    } else {
+			        summation = summation + (window_size - valid_count) * default_value;
+			        out[i * reduced_dim + window_index] = summation / window_size;
+			    }
+			    summation = 0.0f;
+				valid_count = 0;
 				window_index += 1;
 			}
 

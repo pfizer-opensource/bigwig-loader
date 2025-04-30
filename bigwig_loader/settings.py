@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     reference_genome: Path = (
         example_data_dir / "GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta"
     )
+    reference_genome_checksum: str = "a6da8681616c05eb542f1d91606a7b2f"
     bigwig_dir: Path = example_data_dir / "bigwig"
 
     def __str__(self) -> str:

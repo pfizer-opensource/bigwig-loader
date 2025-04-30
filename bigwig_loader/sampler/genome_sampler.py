@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 from typing import Callable
+from typing import Iterable
 from typing import Iterator
 from typing import Literal
 from typing import Optional
@@ -21,7 +22,7 @@ class GenomicSequenceSampler:
         self,
         reference_genome_path: Path,
         sequence_length: int,
-        position_sampler: Iterator[tuple[str, int]],
+        position_sampler: Iterable[tuple[str, int]],
         maximum_unknown_bases_fraction: float = 0.1,
     ):
         self.reference_genome_path = reference_genome_path

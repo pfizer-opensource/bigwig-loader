@@ -1,48 +1,55 @@
 from math import isnan
 
+import cupy as cp
 import pandas as pd
 import pytest
 
 from bigwig_loader import config
+from bigwig_loader.collection import BigWigCollection
+from bigwig_loader.dataset import BigWigDataset
 
-torch = pytest.importorskip("torch")
 
+@pytest.mark.parametrize("window_size", [2, 11, 32, 128])
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_same_output(bigwig_path, window_size, default_value):
+    collection = BigWigCollection(bigwig_path, first_n_files=3)
+    print(collection.bigwig_paths)
 
-@pytest.fixture
-def pytorch_dataset(bigwig_path, reference_genome_path, merged_intervals):
-    from bigwig_loader.pytorch import PytorchBigWigDataset
-
-    dataset = PytorchBigWigDataset(
-        regions_of_interest=merged_intervals,
-        collection=bigwig_path,
-        reference_genome_path=reference_genome_path,
-        sequence_length=1000,
-        center_bin_to_predict=1000,
-        batch_size=256,
-        batches_per_epoch=4,
-        maximum_unknown_bases_fraction=0.1,
-        first_n_files=2,
+    df = pd.read_csv(config.example_positions, sep="\t")
+    df = df[df["chr"].isin(collection.get_chromosomes_present_in_all_files())]
+    chromosomes, starts, ends = (
+        list(df["chr"]),
+        list(df["center"] - 1024),
+        list(df["center"] + 1024),
     )
-    return dataset
+    full_batch = collection.get_batch(
+        chromosomes, starts, ends, window_size=1, default_value=default_value
+    )
+    batch_with_window = collection.get_batch(
+        chromosomes, starts, ends, window_size=window_size, default_value=default_value
+    )
+    sequence_length = 2048
+    reduced_dim = sequence_length // window_size
+
+    if isnan(default_value):
+        assert cp.isnan(full_batch).any()
+    else:
+        assert not cp.isnan(full_batch).any()
+
+    full_matrix = full_batch[:, :, : reduced_dim * window_size]
+    full_matrix = full_matrix.reshape(
+        full_matrix.shape[0], full_matrix.shape[1], reduced_dim, window_size
+    )
+    expected = cp.nanmean(full_matrix, axis=-1)
+    print(batch_with_window)
+    print(expected)
+    assert cp.allclose(expected, batch_with_window, equal_nan=True)
 
 
-def test_pytorch_dataset(pytorch_dataset):
-    for sequence, target in pytorch_dataset:
-        assert target.shape == (256, 2, 1000)
-
-
-def test_input_and_target_is_torch_tensor(pytorch_dataset):
-    sequence, target = next(iter(pytorch_dataset))
-    assert isinstance(sequence, torch.Tensor)
-    assert isinstance(target, torch.Tensor)
-
-
-@pytest.mark.parametrize("default_value", [0.0, torch.nan, 4.0, 5.6])
-def test_pytorch_dataset_with_window_function(
+@pytest.mark.parametrize("default_value", [0.0, cp.nan, 4.0, 5.6])
+def test_dataset_with_window_function(
     default_value, bigwig_path, reference_genome_path, merged_intervals
 ):
-    from bigwig_loader.pytorch import PytorchBigWigDataset
-
     center_bin_to_predict = 2048
     window_size = 128
     reduced_dim = center_bin_to_predict // window_size
@@ -56,7 +63,7 @@ def test_pytorch_dataset_with_window_function(
 
     position_sampler = [(chrom, center) for chrom, center in zip(chromosomes, centers)]
 
-    dataset = PytorchBigWigDataset(
+    dataset = BigWigDataset(
         regions_of_interest=merged_intervals,
         collection=bigwig_path,
         reference_genome_path=reference_genome_path,
@@ -72,7 +79,7 @@ def test_pytorch_dataset_with_window_function(
         return_batch_objects=True,
     )
 
-    dataset_with_window = PytorchBigWigDataset(
+    dataset_with_window = BigWigDataset(
         regions_of_interest=merged_intervals,
         collection=bigwig_path,
         reference_genome_path=reference_genome_path,
@@ -88,8 +95,6 @@ def test_pytorch_dataset_with_window_function(
         return_batch_objects=True,
     )
 
-    print(dataset_with_window._dataset.bigwig_collection.bigwig_paths)
-
     for batch, batch_with_window in zip(dataset, dataset_with_window):
         print(batch)
         print(batch_with_window)
@@ -103,13 +108,13 @@ def test_pytorch_dataset_with_window_function(
             batch.values.shape[0], batch.values.shape[1], reduced_dim, window_size
         )
         if not isnan(default_value) or default_value == 0:
-            expected = torch.nan_to_num(expected, nan=default_value)
-        expected = torch.nanmean(expected, axis=-1)
+            cp.nan_to_num(expected, copy=False, nan=default_value)
+        expected = cp.nanmean(expected, axis=-1)
         print("---")
         print("expected")
         print(expected)
         print("batch_with_window")
         print(batch_with_window.values)
-        assert torch.allclose(expected, batch_with_window.values, equal_nan=True)
+        assert cp.allclose(expected, batch_with_window.values, equal_nan=True)
         if isnan(default_value):
-            assert torch.isnan(batch_with_window.values).any()
+            assert cp.isnan(batch_with_window.values).any()

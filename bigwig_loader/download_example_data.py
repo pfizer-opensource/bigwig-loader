@@ -19,18 +19,53 @@ def download_example_data() -> None:
 
 def get_reference_genome(reference_genome_path: Path = config.reference_genome) -> Path:
     compressed_file = reference_genome_path.with_suffix(".fasta.gz")
-    if reference_genome_path.exists():
-        return reference_genome_path
-    elif compressed_file.exists():
+    if compressed_file.exists() and not reference_genome_path.exists():
         # subprocess.run(["bgzip", "-d", compressed_file])
         unzip_gz_file(compressed_file, reference_genome_path)
-    else:
-        LOGGER.info("Need reference genome for tests. Downloading it from ENCODE.")
-        url = "https://www.encodeproject.org/files/GRCh38_no_alt_analysis_set_GCA_000001405.15/@@download/GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta.gz"
-        urllib.request.urlretrieve(url, compressed_file)
-        # subprocess.run(["bgzip", "-d", compressed_file])
-        unzip_gz_file(compressed_file, reference_genome_path)
+
+    if (
+        reference_genome_path.exists()
+        and checksum_md5_for_path(reference_genome_path)
+        != config.reference_genome_checksum
+    ):
+        LOGGER.info(
+            f"Reference genome checksum mismatch, downloading again from {reference_genome_path}"
+        )
+        _download_genome(
+            url=config.reference_genome_url,
+            compressed_file_path=compressed_file,
+            uncompressed_file_path=reference_genome_path,
+            md5_checksum=config.reference_genome_checksum,
+        )
+
+    if not reference_genome_path.exists():
+        LOGGER.info(
+            f"Reference genome not found, downloading from {config.reference_genome_url}"
+        )
+        _download_genome(
+            url=config.reference_genome_url,
+            compressed_file_path=compressed_file,
+            uncompressed_file_path=reference_genome_path,
+            md5_checksum=config.reference_genome_checksum,
+        )
     return reference_genome_path
+
+
+def _download_genome(
+    url: str,
+    compressed_file_path: Path,
+    uncompressed_file_path: Path,
+    md5_checksum: str,
+) -> Path:
+    urllib.request.urlretrieve(url, compressed_file_path)
+    # subprocess.run(["bgzip", "-d", compressed_file])
+    unzip_gz_file(compressed_file_path, uncompressed_file_path)
+    this_checksum = checksum_md5_for_path(uncompressed_file_path)
+    if this_checksum != md5_checksum:
+        raise RuntimeError(
+            f"{uncompressed_file_path} has incorrect checksum: {this_checksum} vs. {md5_checksum}"
+        )
+    return uncompressed_file_path
 
 
 def unzip_gz_file(compressed_file_path: Path, output_file_path: Path) -> Path:
@@ -52,6 +87,13 @@ EXAMPLE_FILES = {
 }
 
 
+def checksum_md5_for_path(path: Path, chunk_size: int = 10 * 1024 * 1024) -> str:
+    """return the md5sum"""
+    with path.open(mode="rb") as f:
+        checksum = checksum_md5(f, chunk_size=chunk_size)
+    return checksum
+
+
 def checksum_md5(f: BinaryIO, *, chunk_size: int = 10 * 1024 * 1024) -> str:
     """return the md5sum"""
     m = hashlib.md5(b"", usedforsecurity=False)
@@ -68,7 +110,7 @@ def get_example_bigwigs_files(bigwig_dir: Path = config.bigwig_dir) -> Path:
             file = bigwig_dir / fn
             if not file.exists():
                 urllib.request.urlretrieve(url, file)
-            with file.open(mode="rb") as f:
-                if checksum_md5(f) != md5:
-                    raise RuntimeError(f"{fn} has incorrect checksum!")
+            checksum = checksum_md5_for_path(file)
+            if checksum != md5:
+                raise RuntimeError(f"{fn} has incorrect checksum: {checksum} vs. {md5}")
     return bigwig_dir

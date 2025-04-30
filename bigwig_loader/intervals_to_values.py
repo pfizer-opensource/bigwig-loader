@@ -1,5 +1,6 @@
 import logging
 import math
+from math import isnan
 from pathlib import Path
 
 import cupy as cp
@@ -86,11 +87,15 @@ def intervals_to_values(
         )
 
     if out is None:
+        logging.debug(f"Creating new out tensor with default value {default_value}")
+
         out = cp.full(
             (found_starts.shape[0], len(query_starts), sequence_length // window_size),
             default_value,
             dtype=cp.float32,
         )
+        logging.debug(out)
+
     else:
         logging.debug(f"Setting default value in output tensor to {default_value}")
         out.fill(default_value)
@@ -120,6 +125,7 @@ def intervals_to_values(
     array_start = cp.ascontiguousarray(array_start)
     array_end = cp.ascontiguousarray(array_end)
     array_value = cp.ascontiguousarray(array_value)
+    default_value_isnan = isnan(default_value)
 
     cuda_kernel(
         (grid_size,),
@@ -137,6 +143,8 @@ def intervals_to_values(
             sequence_length,
             max_number_intervals,
             window_size,
+            cp.float32(default_value),
+            default_value_isnan,
             out,
         ),
     )
@@ -167,8 +175,10 @@ def kernel_in_python_with_window(
         int,
         int,
         int,
-        cp.ndarray,
         int,
+        float,
+        bool,
+        cp.ndarray,
     ],
 ) -> cp.ndarray:
     """Equivalent in python to cuda_kernel_with_window. Just for debugging."""
@@ -186,6 +196,8 @@ def kernel_in_python_with_window(
         sequence_length,
         max_number_intervals,
         window_size,
+        default_value,
+        default_value_isnan,
         out,
     ) = args
 
@@ -214,7 +226,7 @@ def kernel_in_python_with_window(
     print("reduced_dim")
     print(reduced_dim)
 
-    out_vector = [0.0] * reduced_dim * batch_size * num_tracks
+    out_vector = [default_value] * reduced_dim * batch_size * num_tracks
 
     for thread in range(n_threads):
         batch_index = thread % batch_size
@@ -235,7 +247,8 @@ def kernel_in_python_with_window(
 
         cursor = found_start_index
         window_index = 0
-        summation = 0
+        summation = 0.0
+        valid_count = 0
 
         # cursor moves through the rows of the bigwig file
         # window_index moves through the sequence
@@ -261,19 +274,31 @@ def kernel_in_python_with_window(
             print("start index", start_index)
 
             if start_index >= window_end:
-                print("CONTINUE")
-                out_vector[i * reduced_dim + window_index] = summation / window_size
-                summation = 0
+                if default_value_isnan:
+                    if valid_count > 0:
+                        out_vector[i * reduced_dim + window_index] = (
+                            summation / valid_count
+                        )
+                    else:
+                        out_vector[i * reduced_dim + window_index] = default_value
+                else:
+                    summation = summation + (window_size - valid_count) * default_value
+                    out_vector[i * reduced_dim + window_index] = summation / window_size
+                summation = 0.0
+                valid_count = 0
                 window_index += 1
+                print("CONTINUE")
                 continue
 
             number = min(window_end, end_index) - max(window_start, start_index)
 
-            print(
-                f"Add {number} x {track_values[cursor]} = {number * track_values[cursor]} to summation"
-            )
-            summation += number * track_values[cursor]
-            print(f"Summation = {summation}")
+            if number > 0:
+                print(
+                    f"Add {number} x {track_values[cursor]} = {number * track_values[cursor]} to summation"
+                )
+                summation += number * track_values[cursor]
+                print(f"Summation = {summation}")
+                valid_count += number
 
             print("end_index", "window_end")
             print(end_index, window_end)
@@ -288,8 +313,19 @@ def kernel_in_python_with_window(
                     print(
                         "cursor + 1 >= found_end_index \t\t calculate average, reset summation and move to next window"
                     )
-                out_vector[i * reduced_dim + window_index] = summation / window_size
-                summation = 0
+                # out_vector[i * reduced_dim + window_index] = summation / window_size
+                if default_value_isnan:
+                    if valid_count > 0:
+                        out_vector[i * reduced_dim + window_index] = (
+                            summation / valid_count
+                        )
+                    else:
+                        out_vector[i * reduced_dim + window_index] = default_value
+                else:
+                    summation = summation + (window_size - valid_count) * default_value
+                    out_vector[i * reduced_dim + window_index] = summation / window_size
+                summation = 0.0
+                valid_count = 0
                 window_index += 1
             # move cursor
             if end_index < window_end:

@@ -21,7 +21,8 @@ def test_throw_exception_when_queried_intervals_are_of_different_lengths() -> No
         )
 
 
-def test_get_values_from_intervals() -> None:
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_get_values_from_intervals(default_value) -> None:
     """Probably most frequent situation."""
     track_starts = cp.asarray([1, 3, 10, 12, 16], dtype=cp.int32)
     track_ends = cp.asarray([3, 10, 12, 16, 20], dtype=cp.int32)
@@ -30,15 +31,22 @@ def test_get_values_from_intervals() -> None:
     query_ends = cp.asarray([17], dtype=cp.int32)
     reserved = cp.zeros((1, 15), dtype=cp.float32)
     values = intervals_to_values(
-        track_starts, track_ends, track_values, query_starts, query_ends, reserved
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        default_value=default_value,
+        out=reserved,
     )
-    assert (
-        values
-        == cp.asarray([[20, 15, 15, 15, 15, 15, 15, 15, 30, 30, 40, 40, 40, 40, 50]])
-    ).all()
+    expected = cp.asarray(
+        [[20, 15, 15, 15, 15, 15, 15, 15, 30, 30, 40, 40, 40, 40, 50]]
+    )
+    assert cp.allclose(expected, values, equal_nan=True)
 
 
-def test_get_values_from_intervals_edge_case_1() -> None:
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_get_values_from_intervals_edge_case_1(default_value) -> None:
     """Query start is somewhere in a "gap"."""
     track_starts = cp.asarray([1, 10, 12, 16], dtype=cp.int32)
     track_ends = cp.asarray([3, 12, 16, 20], dtype=cp.int32)
@@ -47,19 +55,28 @@ def test_get_values_from_intervals_edge_case_1() -> None:
     query_ends = cp.asarray([18], dtype=cp.int32)
     reserved = cp.zeros((1, 12), dtype=cp.dtype("<f4"))
     values = intervals_to_values(
-        track_starts, track_ends, track_values, query_starts, query_ends, reserved
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        default_value=default_value,
+        out=reserved,
     )
-    expected = cp.asarray([[0, 0, 0, 0, 30, 30, 40, 40, 40, 40, 50, 50]])
+    x = default_value
+    expected = cp.asarray([[x, x, x, x, 30, 30, 40, 40, 40, 40, 50, 50]])
 
     print(expected)
     print(values)
 
-    assert (values == expected).all() and expected.shape[-1] == query_ends[
-        0
-    ] - query_starts[0]
+    assert (
+        cp.allclose(values, expected, equal_nan=True)
+        and expected.shape[-1] == query_ends[0] - query_starts[0]
+    )
 
 
-def test_get_values_from_intervals_edge_case_2() -> None:
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_get_values_from_intervals_edge_case_2(default_value) -> None:
     """Query start is exactly at start index after "gap"."""
     track_starts = cp.asarray([1, 10, 12, 16], dtype=cp.int32)
     track_ends = cp.asarray([3, 12, 16, 20], dtype=cp.int32)
@@ -68,15 +85,23 @@ def test_get_values_from_intervals_edge_case_2() -> None:
     query_ends = cp.asarray([18], dtype=cp.int32)
     reserved = cp.zeros((1, 8), dtype=cp.dtype("<f4"))
     values = intervals_to_values(
-        track_starts, track_ends, track_values, query_starts, query_ends, reserved
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        default_value=default_value,
+        out=reserved,
     )
     expected = cp.asarray([[30, 30, 40, 40, 40, 40, 50, 50]])
-    assert (values == expected).all() and expected.shape[-1] == query_ends[
-        0
-    ] - query_starts[0]
+    assert (
+        cp.allclose(values, expected, equal_nan=True)
+        and expected.shape[-1] == query_ends[0] - query_starts[0]
+    )
 
 
-def test_get_values_from_intervals_edge_case_3() -> None:
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_get_values_from_intervals_edge_case_3(default_value) -> None:
     """Query end is somewhere in a "gap"."""
     track_starts = cp.asarray([5, 10, 12, 18], dtype=cp.int32)
     track_ends = cp.asarray([10, 12, 14, 20], dtype=cp.int32)
@@ -85,15 +110,24 @@ def test_get_values_from_intervals_edge_case_3() -> None:
     query_ends = cp.asarray([16], dtype=cp.int32)
     reserved = cp.zeros((1, 7), dtype=cp.dtype("<f4"))
     values = intervals_to_values(
-        track_starts, track_ends, track_values, query_starts, query_ends, reserved
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        default_value=default_value,
+        out=reserved,
     )
-    expected = cp.asarray([[20, 30, 30, 40, 40, 0, 0]])
-    assert (values == expected).all() and expected.shape[-1] == query_ends[
-        0
-    ] - query_starts[0]
+    x = default_value
+    expected = cp.asarray([[20, 30, 30, 40, 40, x, x]])
+    assert (
+        cp.allclose(values, expected, equal_nan=True)
+        and expected.shape[-1] == query_ends[0] - query_starts[0]
+    )
 
 
-def test_get_values_from_intervals_edge_case_4() -> None:
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_get_values_from_intervals_edge_case_4(default_value) -> None:
     """Query end is exactly at end index before "gap"."""
     track_starts = cp.asarray([5, 10, 12, 18], dtype=cp.int32)
     track_ends = cp.asarray([10, 12, 14, 20], dtype=cp.int32)
@@ -102,7 +136,13 @@ def test_get_values_from_intervals_edge_case_4() -> None:
     query_ends = cp.asarray([14], dtype=cp.int32)
     reserved = cp.zeros((1, 5), dtype=cp.dtype("<f4"))
     values = intervals_to_values(
-        track_starts, track_ends, track_values, query_starts, query_ends, reserved
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        default_value=default_value,
+        out=reserved,
     )
     expected = cp.asarray([[20, 30, 30, 40, 40]])
 
@@ -114,7 +154,8 @@ def test_get_values_from_intervals_edge_case_4() -> None:
     ] - query_starts[0]
 
 
-def test_get_values_from_intervals_edge_case_5() -> None:
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_get_values_from_intervals_edge_case_5(default_value) -> None:
     """Query end is exactly at end index before "gap"."""
     track_starts = cp.asarray([5, 10, 12, 18], dtype=cp.uint32)
     track_ends = cp.asarray([10, 12, 14, 20], dtype=cp.uint32)
@@ -123,19 +164,28 @@ def test_get_values_from_intervals_edge_case_5() -> None:
     query_ends = cp.asarray([20], dtype=cp.uint32)
     reserved = cp.zeros((1, 11), dtype=cp.dtype("<f4"))
     values = intervals_to_values(
-        track_starts, track_ends, track_values, query_starts, query_ends, reserved
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        default_value=default_value,
+        out=reserved,
     )
-    expected = cp.asarray([[20, 30, 30, 40, 40, 0, 0, 0, 0, 50, 50]])
+    x = default_value
+    expected = cp.asarray([[20, 30, 30, 40, 40, x, x, x, x, 50, 50]])
 
     print(expected)
     print(values)
 
-    assert (values == expected).all() and expected.shape[-1] == query_ends[
-        0
-    ] - query_starts[0]
+    assert (
+        cp.allclose(expected, values, equal_nan=True)
+        and expected.shape[-1] == query_ends[0] - query_starts[0]
+    )
 
 
-def test_get_values_from_intervals_batch_of_2() -> None:
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_get_values_from_intervals_batch_of_2(default_value) -> None:
     """Query end is exactly at end index before "gap"."""
     track_starts = cp.asarray([5, 10, 12, 18], dtype=cp.int32)
     track_ends = cp.asarray([10, 12, 14, 20], dtype=cp.int32)
@@ -144,20 +194,30 @@ def test_get_values_from_intervals_batch_of_2() -> None:
     query_ends = cp.asarray([18, 20], dtype=cp.int32)
     reserved = cp.zeros([2, 11], dtype=cp.dtype("<f4"))
     values = intervals_to_values(
-        track_starts, track_ends, track_values, query_starts, query_ends, reserved
+        track_starts,
+        track_ends,
+        track_values,
+        query_starts,
+        query_ends,
+        default_value=default_value,
+        out=reserved,
     )
+
+    x = default_value
+
     expected = cp.asarray(
         [
-            [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, 0.0, 0.0, 0.0, 0.0],
-            [20.0, 30.0, 30.0, 40.0, 40.0, 0.0, 0.0, 0.0, 0.0, 50.0, 50.0],
+            [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x],
+            [20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x, 50.0, 50.0],
         ]
     )
     print(expected)
     print(values)
-    assert (values == expected).all()
+    assert cp.allclose(expected, values, equal_nan=True)
 
 
-def test_get_values_from_intervals_batch_multiple_tracks() -> None:
+@pytest.mark.parametrize("default_value", [0.0, cp.nan])
+def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
     """Query end is exactly at end index before "gap"."""
     track_starts = cp.asarray(
         [5, 10, 12, 18, 8, 9, 10, 18, 25, 10, 100, 1000], dtype=cp.int32
@@ -178,27 +238,29 @@ def test_get_values_from_intervals_batch_multiple_tracks() -> None:
         track_values,
         query_starts,
         query_ends,
-        reserved,
+        default_value=default_value,
+        out=reserved,
         sizes=cp.asarray([4, 5, 3], dtype=cp.int32),
     )
+    x = default_value
     expected = cp.asarray(
         [
             [
-                [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, 0.0, 0.0, 0.0, 0.0],
-                [20.0, 30.0, 30.0, 40.0, 40.0, 0.0, 0.0, 0.0, 0.0, 50.0, 50.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x],
+                [20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x, 50.0, 50.0],
+                [x, x, x, x, x, x, x, x, x, x, x],
+                [x, x, x, x, x, x, x, x, x, x, x],
             ],
             [
-                [0.0, 60.0, 70.0, 80.0, 80.0, 80.0, 80.0, 0.0, 0.0, 0.0, 0.0],
-                [70.0, 80.0, 80.0, 80.0, 80.0, 0.0, 0.0, 0.0, 0.0, 90.0, 90.0],
-                [90.0, 90.0, 0.0, 0.0, 0.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [x, 60.0, 70.0, 80.0, 80.0, 80.0, 80.0, x, x, x, x],
+                [70.0, 80.0, 80.0, 80.0, 80.0, x, x, x, x, 90.0, 90.0],
+                [90.0, 90.0, x, x, x, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+                [x, x, x, x, x, x, x, x, x, x, x],
             ],
             [
-                [0.0, 0.0, 0.0, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0],
+                [x, x, x, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0],
                 [
-                    0.0,
+                    x,
                     110.0,
                     110.0,
                     110.0,
@@ -210,9 +272,9 @@ def test_get_values_from_intervals_batch_multiple_tracks() -> None:
                     110.0,
                     110.0,
                 ],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [x, x, x, x, x, x, x, x, x, x, x],
                 [
-                    0.0,
+                    x,
                     120.0,
                     120.0,
                     120.0,
@@ -229,35 +291,4 @@ def test_get_values_from_intervals_batch_multiple_tracks() -> None:
     )
     print(expected)
     print(values)
-    assert (values == expected).all()
-
-
-def test_default_nan() -> None:
-    """Query end is exactly at end index before "gap"
-       Now instead of zeros, NaN values should be
-       used.
-    ."""
-    track_starts = cp.asarray([5, 10, 12, 18], dtype=cp.int32)
-    track_ends = cp.asarray([10, 12, 14, 20], dtype=cp.int32)
-    track_values = cp.asarray([20.0, 30.0, 40.0, 50.0], dtype=cp.dtype("f4"))
-    query_starts = cp.asarray([7, 9], dtype=cp.int32)
-    query_ends = cp.asarray([18, 20], dtype=cp.int32)
-    reserved = cp.zeros([2, 11], dtype=cp.dtype("<f4"))
-    values = intervals_to_values(
-        track_starts,
-        track_ends,
-        track_values,
-        query_starts,
-        query_ends,
-        default_value=cp.nan,
-        out=reserved,
-    )
-    expected = cp.asarray(
-        [
-            [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, cp.nan, cp.nan, cp.nan, cp.nan],
-            [20.0, 30.0, 30.0, 40.0, 40.0, cp.nan, cp.nan, cp.nan, cp.nan, 50.0, 50.0],
-        ]
-    )
-    print(expected)
-    print(values)
-    assert cp.allclose(values, expected, equal_nan=True)
+    assert cp.allclose(expected, values, equal_nan=True)

@@ -28,14 +28,6 @@ def sort_intervals(intervals: pd.DataFrame, inplace: bool = False) -> pd.DataFra
         )
 
 
-def make_cumulative_index_intervals(intervals: pd.DataFrame) -> pd.DataFrame:
-    intervals.reset_index(drop=True, inplace=True)
-    intervals.index = (
-        (intervals["end"] - intervals["start"]).cumsum().shift().fillna(0).astype(int)  # type: ignore
-    )
-    return intervals
-
-
 _string_to_encoding = {
     "A": [1.0, 0.0, 0.0, 0.0],
     "C": [0.0, 1.0, 0.0, 0.0],
