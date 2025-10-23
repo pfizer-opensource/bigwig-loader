@@ -8,7 +8,7 @@ dependencies:
   - pip
   - cython
   - c-compiler
-  - kvikio>=24.06.00
+  - kvikio>=24.06.00,<=25.08.00
   - cupy>=12.0.0
   - numpy>=1.21
   - pandas
