@@ -231,7 +231,8 @@ def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
     )
     query_starts = cp.asarray([7, 9, 20, 99], dtype=cp.int32)
     query_ends = cp.asarray([18, 20, 31, 110], dtype=cp.int32)
-    reserved = cp.zeros([3, 4, 11], dtype=cp.dtype("<f4"))
+    # reserved = cp.zeros([3, 4, 11], dtype=cp.dtype("<f4"))
+    reserved = cp.zeros([4, 11, 3], dtype=cp.dtype("<f4"))
     values = intervals_to_values(
         track_starts,
         track_ends,
@@ -289,6 +290,11 @@ def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
             ],
         ]
     )
+
+    expected = expected.transpose(1, 2, 0)
+
+    print("Expected:", expected.shape)
     print(expected)
+    print("Actual Values:", values.shape)
     print(values)
     assert cp.allclose(expected, values, equal_nan=True)

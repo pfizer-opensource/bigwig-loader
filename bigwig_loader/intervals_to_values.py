@@ -52,6 +52,7 @@ def intervals_to_values(
     window_size: int = 1,
     default_value: float = 0.0,
     out: cp.ndarray | None = None,
+    scaling_factors: cp.ndarray | None = None,
     dtype: Literal["float32", "bfloat16"] = "float32",
 ) -> cp.ndarray:
     """
@@ -81,6 +82,7 @@ def intervals_to_values(
         window_size: size in basepairs to average over (default: 1)
         default_value: value to use for regions where no data is specified (default: 0.0)
         out: array of size batch_size x sequence_length x n_tracks to store the output.
+        scaling_factors: optional array of shape (n_tracks,) to scale each track's values
         dtype: output dtype, either 'float32' or 'bfloat16'
     Returns:
         out: array of size batch_size x sequence_length x n_tracks
@@ -94,11 +96,9 @@ def intervals_to_values(
     sequence_length = (query_ends[0] - query_starts[0]).item()
 
     if (found_starts is None or found_ends is None) and sizes is None:
-        # just one size, which is the length of the entire track_starts/tracks_ends/tracks_values
         sizes = cp.asarray([len(array_start)], dtype=array_start.dtype)
 
     if found_starts is None or found_ends is None:
-        # n_subarrays x n_queries
         found_starts, found_ends = interval_searchsorted(
             array_start,
             array_end,
@@ -113,7 +113,7 @@ def intervals_to_values(
         # cupy does not support bfloat16 yet,
         # but the cuda kernel that does the
         # conversion does
-        out_dtype = cp.unint16
+        out_dtype = cp.uint16
     else:
         out_dtype = cp.float32
 
@@ -159,6 +159,12 @@ def intervals_to_values(
     array_value = cp.ascontiguousarray(array_value)
     default_value_isnan = isnan(default_value)
 
+    # Handle scaling factors - convert to float32 if provided
+    if scaling_factors is not None:
+        scaling_factors = cp.ascontiguousarray(scaling_factors, dtype=cp.float32)
+    else:
+        scaling_factors = cp.asarray([], dtype=cp.float32)
+
     cuda_kernel(
         (grid_size,),
         (block_size,),
@@ -172,14 +178,15 @@ def intervals_to_values(
             array_value,
             num_tracks,
             batch_size,
-            sequence_length,
+            sequence_length,   # should really sequence length, not reduced sequence length
             max_number_intervals,
             window_size,
             cp.float32(default_value),
             default_value_isnan,
+            scaling_factors,
             out,
         ),
-        dtype=dtype,
+        dtype=dtype
     )
     return out
 

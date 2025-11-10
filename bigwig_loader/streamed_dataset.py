@@ -208,6 +208,13 @@ class StreamedDataloader:
                     number_of_tracks=found_starts.shape[0],
                 )
 
+                # Prepare scaling factors if needed
+                scaling_factors = None
+                if self.collection.scaling_factors_cupy is not None:
+                    scaling_factors = self.collection.scaling_factors_cupy.squeeze()  # Shape: (n_tracks,)
+                    if batch.track_indices is not None:
+                        scaling_factors = scaling_factors[batch.track_indices]
+
                 for select in self._slices_objects(n_samples, slice_size):
                     with self.main_stream as stream:
                         stream.synchronize()
@@ -223,23 +230,12 @@ class StreamedDataloader:
                             window_size=self.window_size,
                             default_value=self._default_value,
                             out=out,
+                            dtype=self._dtype,
+                            scaling_factors=scaling_factors,  # NEW: pass scaling factors to kernel
                         )
 
-                        if self.collection.scaling_factors_cupy is not None:
-                            # Adjust scaling factors shape to match
-                            scaling_factors = (
-                                self.collection.scaling_factors_cupy
-                            )  # Shape: (1, n_tracks, 1)
-                            scaling_factors = scaling_factors.transpose(
-                                0, 2, 1
-                            )  # Now: (1, 1, n_tracks)
+                        # Removed the old scaling multiplication code - now handled in kernel!
 
-                            if batch.track_indices is not None:
-                                scaling_factors = scaling_factors[
-                                    :, :, batch.track_indices
-                                ]
-
-                            values *= scaling_factors  # Broadcasting works correctly
                         sliced_query = batch[select]
                         sliced_query.values = values
                         stream.synchronize()
@@ -257,6 +253,7 @@ class StreamedDataloader:
         except Exception as e:
             self.stop()
             raise e
+
 
     def _get_out_tensor(
         self, batch_size: int, sequence_length: int, number_of_tracks: int

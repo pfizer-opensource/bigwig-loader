@@ -31,11 +31,12 @@ void intervals_to_values_kernel(
         const int window_size,
         const float default_value,
         const bool default_value_isnan,
+        const float* scaling_factors,  // NEW: scaling factors array of length n_tracks
         T* out
 ) {
     int thread = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Same thread indexing as your original kernel
+    // Same thread indexing as before
     int batch_index = thread % batch_size;
     int i = thread % (batch_size * n_tracks);
     int track_index = i / batch_size;
@@ -57,10 +58,14 @@ void intervals_to_values_kernel(
             int end_index = min(interval_end, query_end) - query_start;
 
             float value = track_values[cursor];
+
+            // Apply scaling factor here
+            if (scaling_factors != nullptr) {
+                value *= scaling_factors[track_index];
+            }
+
             T typed_value = cast_value<T>(value);
 
-            // Output layout is now: batch_size x sequence_length x n_tracks
-            // Position in flattened array: batch_index * (sequence_length * n_tracks) + pos * n_tracks + track_index
             int base_offset = batch_index * (sequence_length * n_tracks) + track_index;
 
             for (int pos = start_index; pos < end_index; pos++) {
@@ -91,14 +96,18 @@ void intervals_to_values_kernel(
             int end_index = min(interval_end, query_end) - query_start;
 
             if (start_index >= window_end) {
-                T out_value;
-                if (default_value_isnan) {
-                    out_value = cast_value<T>(valid_count > 0 ? summation / valid_count : CUDART_NAN_F);
-                } else {
-                    summation = summation + (window_size - valid_count) * default_value;
-                    out_value = cast_value<T>(summation / window_size);
+                float final_value = (valid_count > 0) ? (summation / valid_count) : 0.0f;
+
+                // Apply scaling factor
+                if (scaling_factors != nullptr) {
+                    final_value *= scaling_factors[track_index];
                 }
 
+                if (default_value_isnan && valid_count == 0) {
+                    final_value = CUDART_NAN_F;
+                }
+
+                T out_value = cast_value<T>(final_value);
                 int out_idx = batch_index * (reduced_dim * n_tracks) + window_index * n_tracks + track_index;
                 out[out_idx] = out_value;
 
@@ -116,14 +125,18 @@ void intervals_to_values_kernel(
             }
 
             if (end_index >= window_end || cursor + 1 >= found_end_index) {
-                T out_value;
-                if (default_value_isnan) {
-                    out_value = cast_value<T>(valid_count > 0 ? summation / valid_count : CUDART_NAN_F);
-                } else {
-                    summation = summation + (window_size - valid_count) * default_value;
-                    out_value = cast_value<T>(summation / window_size);
+                float final_value = (valid_count > 0) ? (summation / valid_count) : 0.0f;
+
+                // Apply scaling factor
+                if (scaling_factors != nullptr) {
+                    final_value *= scaling_factors[track_index];
                 }
 
+                if (default_value_isnan && valid_count == 0) {
+                    final_value = CUDART_NAN_F;
+                }
+
+                T out_value = cast_value<T>(final_value);
                 int out_idx = batch_index * (reduced_dim * n_tracks) + window_index * n_tracks + track_index;
                 out[out_idx] = out_value;
 
@@ -139,7 +152,8 @@ void intervals_to_values_kernel(
     }
 }
 
-// Explicit instantiations with extern "C" wrapper
+// Update wrapper functions to include scaling_factors
+
 extern "C" __global__
 void intervals_to_values_float32(
         const unsigned int* query_starts,
@@ -156,13 +170,15 @@ void intervals_to_values_float32(
         const int window_size,
         const float default_value,
         const bool default_value_isnan,
+        const float* scaling_factors,
         float* out
 ) {
     intervals_to_values_kernel<float>(
         query_starts, query_ends, found_starts, found_ends,
         track_starts, track_ends, track_values,
         n_tracks, batch_size, sequence_length, max_number_intervals,
-        window_size, default_value, default_value_isnan, out
+        window_size, default_value, default_value_isnan,
+        scaling_factors, out
     );
 }
 
@@ -182,12 +198,14 @@ void intervals_to_values_bfloat16(
         const int window_size,
         const float default_value,
         const bool default_value_isnan,
+        const float* scaling_factors,
         __nv_bfloat16* out
 ) {
     intervals_to_values_kernel<__nv_bfloat16>(
         query_starts, query_ends, found_starts, found_ends,
         track_starts, track_ends, track_values,
         n_tracks, batch_size, sequence_length, max_number_intervals,
-        window_size, default_value, default_value_isnan, out
+        window_size, default_value, default_value_isnan,
+        scaling_factors, out
     );
 }

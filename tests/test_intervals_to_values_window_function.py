@@ -63,6 +63,7 @@ def test_get_values_from_intervals_edge_case_1(default_value) -> None:
     else:
         expected = cp.asarray([[x, 20.0, 40.0, 46.666668]])
 
+    expected = expected.transpose()
     print("expected:")
     print(expected)
     print("actual:")
