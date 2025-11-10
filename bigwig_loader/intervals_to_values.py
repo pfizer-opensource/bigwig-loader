@@ -178,7 +178,7 @@ def intervals_to_values(
             array_value,
             num_tracks,
             batch_size,
-            sequence_length,   # should really sequence length, not reduced sequence length
+            sequence_length,  # should really sequence length, not reduced sequence length
             max_number_intervals,
             window_size,
             cp.float32(default_value),
@@ -186,7 +186,7 @@ def intervals_to_values(
             scaling_factors,
             out,
         ),
-        dtype=dtype
+        dtype=dtype,
     )
     return out
 

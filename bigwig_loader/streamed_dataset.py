@@ -211,7 +211,9 @@ class StreamedDataloader:
                 # Prepare scaling factors if needed
                 scaling_factors = None
                 if self.collection.scaling_factors_cupy is not None:
-                    scaling_factors = self.collection.scaling_factors_cupy.squeeze()  # Shape: (n_tracks,)
+                    scaling_factors = (
+                        self.collection.scaling_factors_cupy.squeeze()
+                    )  # Shape: (n_tracks,)
                     if batch.track_indices is not None:
                         scaling_factors = scaling_factors[batch.track_indices]
 
@@ -253,7 +255,6 @@ class StreamedDataloader:
         except Exception as e:
             self.stop()
             raise e
-
 
     def _get_out_tensor(
         self, batch_size: int, sequence_length: int, number_of_tracks: int
