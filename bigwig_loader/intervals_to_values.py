@@ -12,15 +12,16 @@ CUDA_KERNEL_DIR = Path(__file__).parent.parent / "cuda_kernels"
 
 
 class Kernel:
-
-    def __init__(self, cudafile: Path = CUDA_KERNEL_DIR / "intervals_to_values_contiguous.cu") -> None:
+    def __init__(
+        self, cudafile: Path = CUDA_KERNEL_DIR / "intervals_to_values_contiguous.cu"
+    ) -> None:
         with open(cudafile) as f:
             self.kernel_code = f.read()
 
         self.kernel_names = {
             "float32": "intervals_to_values_float32",
             "bfloat16": "intervals_to_values_bfloat16",
-            }
+        }
         self._kernels = {}
 
     def get_kernel_by_dtype(self, dtype: Literal["float32", "bfloat16"]):
@@ -34,6 +35,7 @@ class Kernel:
     def __call__(self, *args, dtype: Literal["float32", "bfloat16"], **kwargs):
         kernel = self.get_kernel_by_dtype(dtype=dtype)
         return kernel(*args, **kwargs)
+
 
 cuda_kernel = Kernel()
 
@@ -50,7 +52,7 @@ def intervals_to_values(
     window_size: int = 1,
     default_value: float = 0.0,
     out: cp.ndarray | None = None,
-    dtype:  Literal["float32", "bfloat16"] = "float32",
+    dtype: Literal["float32", "bfloat16"] = "float32",
 ) -> cp.ndarray:
     """
     This function converts intervals to values. It can do this for multiple tracks at once.
@@ -107,7 +109,7 @@ def intervals_to_values(
         )
 
     # Determine output dtype
-    if dtype == 'bfloat16':
+    if dtype == "bfloat16":
         # cupy does not support bfloat16 yet,
         # but the cuda kernel that does the
         # conversion does
@@ -177,7 +179,7 @@ def intervals_to_values(
             default_value_isnan,
             out,
         ),
-        dtype=dtype
+        dtype=dtype,
     )
     return out
 

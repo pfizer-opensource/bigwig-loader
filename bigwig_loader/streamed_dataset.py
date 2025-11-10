@@ -227,11 +227,17 @@ class StreamedDataloader:
 
                         if self.collection.scaling_factors_cupy is not None:
                             # Adjust scaling factors shape to match
-                            scaling_factors = self.collection.scaling_factors_cupy  # Shape: (1, n_tracks, 1)
-                            scaling_factors = scaling_factors.transpose(0, 2, 1)  # Now: (1, 1, n_tracks)
+                            scaling_factors = (
+                                self.collection.scaling_factors_cupy
+                            )  # Shape: (1, n_tracks, 1)
+                            scaling_factors = scaling_factors.transpose(
+                                0, 2, 1
+                            )  # Now: (1, 1, n_tracks)
 
                             if batch.track_indices is not None:
-                                scaling_factors = scaling_factors[:, :, batch.track_indices]
+                                scaling_factors = scaling_factors[
+                                    :, :, batch.track_indices
+                                ]
 
                             values *= scaling_factors  # Broadcasting works correctly
                         sliced_query = batch[select]
@@ -258,9 +264,13 @@ class StreamedDataloader:
         """Get output tensor in the correct shape: batch_size x sequence_length x n_tracks"""
         shape = (batch_size, sequence_length, number_of_tracks)
 
-        out_dtype = cp.uint16 if self._dtype == 'bfloat16' else cp.float32
+        out_dtype = cp.uint16 if self._dtype == "bfloat16" else cp.float32
 
-        if self._out is None or self._out.shape != shape or self._out.dtype != out_dtype:
+        if (
+            self._out is None
+            or self._out.shape != shape
+            or self._out.dtype != out_dtype
+        ):
             self._out = cp.full(shape, self._default_value, dtype=out_dtype)
         return self._out
 

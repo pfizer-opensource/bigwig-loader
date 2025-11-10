@@ -123,7 +123,7 @@ class BigWigDataset:
         custom_position_sampler: Optional[Iterable[tuple[str, int]]] = None,
         custom_track_sampler: Optional[Iterable[list[int]]] = None,
         return_batch_objects: bool = False,
-        dtype: Literal["float32", "bfloat16"] = "bfloat16"
+        dtype: Literal["float32", "bfloat16"] = "bfloat16",
     ):
         super().__init__()
 

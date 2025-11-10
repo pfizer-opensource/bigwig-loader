@@ -75,9 +75,7 @@ class PytorchBatch:
 
     @classmethod
     def from_batch(
-        cls,
-        batch: Batch,
-        dtype: Literal["float32", "bfloat16"] = "bfloat16"
+        cls, batch: Batch, dtype: Literal["float32", "bfloat16"] = "bfloat16"
     ) -> "PytorchBatch":
         if batch.other_batched is not None:
             other_batched = (
@@ -105,13 +103,12 @@ class PytorchBatch:
 
     @staticmethod
     def _convert_track_values(
-            tensor: cp.ndarray,
-            dtype: Literal["float32", "bfloat16"] = "float32"
-        ) -> torch.Tensor:
+        tensor: cp.ndarray, dtype: Literal["float32", "bfloat16"] = "float32"
+    ) -> torch.Tensor:
         torch_tensor = torch.as_tensor(tensor)
 
         # Handle bfloat16 conversion from uint16
-        if dtype == 'bfloat16' and tensor.dtype == cp.uint16:
+        if dtype == "bfloat16" and tensor.dtype == cp.uint16:
             torch_tensor = torch_tensor.view(torch.bfloat16)
 
         return torch_tensor
@@ -220,7 +217,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         custom_position_sampler: Optional[Iterable[tuple[str, int]]] = None,
         custom_track_sampler: Optional[Iterable[list[int]]] = None,
         return_batch_objects: bool = False,
-        dtype: Literal["float32", "bfloat16"] = "float32"
+        dtype: Literal["float32", "bfloat16"] = "float32",
     ):
         super().__init__()
         self._dataset = BigWigDataset(
@@ -248,7 +245,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
             custom_position_sampler=custom_position_sampler,
             custom_track_sampler=custom_track_sampler,
             return_batch_objects=True,
-            dtype=dtype
+            dtype=dtype,
         )
         self._return_batch_objects = return_batch_objects
 
