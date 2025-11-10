@@ -4,6 +4,7 @@ from types import TracebackType
 from typing import Generator
 from typing import Iterable
 from typing import Iterator
+from typing import Literal
 
 import cupy as cp
 
@@ -109,6 +110,8 @@ class StreamedDataloader:
         slice_size: int | None = None,
         window_size: int = 1,
         default_value: float = 0.0,
+        dtype: Literal["float32", "bfloat16"] = "float32",
+        track_dimension_last: bool = False,
     ):
         self.input_generator = input_generator
         self.collection = collection
@@ -129,6 +132,8 @@ class StreamedDataloader:
         self._entered = False
         self._out = None
         self._default_value = default_value
+        self._dtype = dtype
+        self.track_dimension_last = track_dimension_last
 
     def __enter__(self) -> "StreamedDataloader":
         self._entered = True
@@ -197,17 +202,17 @@ class StreamedDataloader:
                 slice_size = self._determine_slice_size(n_samples=n_samples)
 
                 out = self._get_out_tensor(
+                    batch_size=slice_size,
                     sequence_length=(abs_end[0] - abs_start[0]).item()
                     // self.window_size,
                     number_of_tracks=found_starts.shape[0],
-                    batch_size=slice_size,
                 )
 
                 for select in self._slices_objects(n_samples, slice_size):
                     with self.main_stream as stream:
                         stream.synchronize()
 
-                        value_matrix = intervals_to_values(
+                        values = intervals_to_values(
                             array_start=start_data,
                             array_end=end_data,
                             array_value=value_data,
@@ -220,19 +225,21 @@ class StreamedDataloader:
                             out=out,
                         )
 
-                        values = cp.transpose(value_matrix, (1, 0, 2))
                         if self.collection.scaling_factors_cupy is not None:
-                            scaling_factors = self.collection.scaling_factors_cupy
+                            # Adjust scaling factors shape to match
+                            scaling_factors = self.collection.scaling_factors_cupy  # Shape: (1, n_tracks, 1)
+                            scaling_factors = scaling_factors.transpose(0, 2, 1)  # Now: (1, 1, n_tracks)
+
                             if batch.track_indices is not None:
-                                scaling_factors = scaling_factors[
-                                    :, batch.track_indices, :
-                                ]
+                                scaling_factors = scaling_factors[:, :, batch.track_indices]
 
-                            values *= scaling_factors
-                        stream.synchronize()
-
+                            values *= scaling_factors  # Broadcasting works correctly
                         sliced_query = batch[select]
                         sliced_query.values = values
+                        stream.synchronize()
+
+                        if not self.track_dimension_last:
+                            values = values.transpose(1, 2)
 
                     yield sliced_query
 
@@ -246,12 +253,15 @@ class StreamedDataloader:
             raise e
 
     def _get_out_tensor(
-        self, number_of_tracks: int, batch_size: int, sequence_length: int
+        self, batch_size: int, sequence_length: int, number_of_tracks: int
     ) -> cp.ndarray:
-        shape = (number_of_tracks, batch_size, sequence_length)
+        """Get output tensor in the correct shape: batch_size x sequence_length x n_tracks"""
+        shape = (batch_size, sequence_length, number_of_tracks)
 
-        if self._out is None or self._out.shape != shape:
-            self._out = cp.full(shape, self._default_value, dtype=cp.float32)
+        out_dtype = cp.uint16 if self._dtype == 'bfloat16' else cp.float32
+
+        if self._out is None or self._out.shape != shape or self._out.dtype != out_dtype:
+            self._out = cp.full(shape, self._default_value, dtype=out_dtype)
         return self._out
 
     def _determine_slice_size(self, n_samples: int) -> int:

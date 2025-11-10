@@ -74,7 +74,11 @@ class PytorchBatch:
         self.track_names = track_names
 
     @classmethod
-    def from_batch(cls, batch: Batch) -> "PytorchBatch":
+    def from_batch(
+        cls,
+        batch: Batch,
+        dtype: Literal["float32", "bfloat16"] = "bfloat16"
+    ) -> "PytorchBatch":
         if batch.other_batched is not None:
             other_batched = (
                 [cls._convert_if_possible(tensor) for tensor in batch.other_batched],
@@ -85,7 +89,7 @@ class PytorchBatch:
             chromosomes=cls._convert_if_possible(batch.chromosomes),
             starts=cls._convert_if_possible(batch.starts),
             ends=cls._convert_if_possible(batch.ends),
-            values=cls._convert_if_possible(batch.values),
+            values=cls._convert_track_values(batch.values, dtype=dtype),
             track_indices=cls._convert_if_possible(batch.track_indices),
             sequences=cls._convert_if_possible(batch.sequences),
             other_batched=other_batched,
@@ -98,6 +102,19 @@ class PytorchBatch:
         if isinstance(tensor, cp.ndarray) or isinstance(tensor, np.ndarray):
             return torch.as_tensor(tensor)
         return tensor
+
+    @staticmethod
+    def _convert_track_values(
+            tensor: cp.ndarray,
+            dtype: Literal["float32", "bfloat16"] = "float32"
+        ) -> torch.Tensor:
+        torch_tensor = torch.as_tensor(tensor)
+
+        # Handle bfloat16 conversion from uint16
+        if dtype == 'bfloat16' and tensor.dtype == cp.uint16:
+            torch_tensor = torch_tensor.view(torch.bfloat16)
+
+        return torch_tensor
 
 
 GENOMIC_SEQUENCE_TYPE = Union[torch.Tensor, list[str], None]
@@ -172,6 +189,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         custom_track_sampler: if specified, this sampler will be used to sample tracks. When not
             specified, each batch simply contains all tracks, or a randomly sellected subset of
             tracks in case sub_sample_tracks is set. Should be Iterable batches of track indices.
+        dtype: float32 or bfloat16 output encoding of the target values (not the sequence encoding).
     """
 
     def __init__(
@@ -202,6 +220,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         custom_position_sampler: Optional[Iterable[tuple[str, int]]] = None,
         custom_track_sampler: Optional[Iterable[list[int]]] = None,
         return_batch_objects: bool = False,
+        dtype: Literal["float32", "bfloat16"] = "float32"
     ):
         super().__init__()
         self._dataset = BigWigDataset(
@@ -229,6 +248,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
             custom_position_sampler=custom_position_sampler,
             custom_track_sampler=custom_track_sampler,
             return_batch_objects=True,
+            dtype=dtype
         )
         self._return_batch_objects = return_batch_objects
 
@@ -236,7 +256,7 @@ class PytorchBigWigDataset(IterableDataset[BATCH_TYPE]):
         self,
     ) -> Iterator[BATCH_TYPE]:
         for batch in self._dataset:
-            pytorch_batch = PytorchBatch.from_batch(batch)  # type: ignore
+            pytorch_batch = PytorchBatch.from_batch(batch, dtype=self._dataset._dtype)  # type: ignore
             if self._return_batch_objects:
                 yield pytorch_batch
             elif pytorch_batch.track_indices is None:

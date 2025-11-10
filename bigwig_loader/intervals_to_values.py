@@ -2,6 +2,7 @@ import logging
 import math
 from math import isnan
 from pathlib import Path
+from typing import Literal
 
 import cupy as cp
 
@@ -10,14 +11,31 @@ from bigwig_loader.searchsorted import interval_searchsorted
 CUDA_KERNEL_DIR = Path(__file__).parent.parent / "cuda_kernels"
 
 
-def get_cuda_kernel() -> str:
-    with open(CUDA_KERNEL_DIR / "intervals_to_values.cu") as f:
-        kernel_code = f.read()
-    return kernel_code
+class Kernel:
 
+    def __init__(self, cudafile: Path = CUDA_KERNEL_DIR / "intervals_to_values_contiguous.cu") -> None:
+        with open(cudafile) as f:
+            self.kernel_code = f.read()
 
-cuda_kernel = cp.RawKernel(get_cuda_kernel(), "intervals_to_values")
-cuda_kernel.compile()
+        self.kernel_names = {
+            "float32": "intervals_to_values_float32",
+            "bfloat16": "intervals_to_values_bfloat16",
+            }
+        self._kernels = {}
+
+    def get_kernel_by_dtype(self, dtype: Literal["float32", "bfloat16"]):
+        if dtype in self._kernels:
+            return self._kernels[dtype]
+        kernel = cp.RawKernel(self.kernel_code, self.kernel_names[dtype])
+        kernel.compile()
+        self._kernels[dtype] = kernel
+        return kernel
+
+    def __call__(self, *args, dtype: Literal["float32", "bfloat16"], **kwargs):
+        kernel = self.get_kernel_by_dtype(dtype=dtype)
+        return kernel(*args, **kwargs)
+
+cuda_kernel = Kernel()
 
 
 def intervals_to_values(
@@ -32,6 +50,7 @@ def intervals_to_values(
     window_size: int = 1,
     default_value: float = 0.0,
     out: cp.ndarray | None = None,
+    dtype:  Literal["float32", "bfloat16"] = "float32",
 ) -> cp.ndarray:
     """
     This function converts intervals to values. It can do this for multiple tracks at once.
@@ -45,6 +64,7 @@ def intervals_to_values(
     When the sequence length is not a multiple of window_size, the output length will
     be sequence_length // window_size, ignoring the last "incomplete" window.
 
+    Output shape: batch_size x sequence_length x n_tracks (no transpose needed!)
 
     Args:
         array_start: array of length sum(sizes) with the start positions of the intervals
@@ -52,16 +72,16 @@ def intervals_to_values(
         array_value: array of length sum(sizes) with the value for those intervals
         query_starts: array of length batch_size with the (genomic) start positions of each batch element
         query_ends: array of length batch_size with the (genomic) end positions of each batch element
-        out: array of size n_tracks x batch_size x sequence_length to store the output
         found_starts: result of searchsorted (if precalculated). Indices into track_starts.
         found_ends: result of searchsorted (if precalculated). Indices into track_ends.
         sizes: number of elements in track_starts/track_ends/track_values for each track.
             Only needed when found_starts and found_ends are not given.
         window_size: size in basepairs to average over (default: 1)
         default_value: value to use for regions where no data is specified (default: 0.0)
-        out: array of size n_tracks x batch_size x sequence_length to store the output.
+        out: array of size batch_size x sequence_length x n_tracks to store the output.
+        dtype: output dtype, either 'float32' or 'bfloat16'
     Returns:
-        out: array of size n_tracks x batch_size x sequence_length
+        out: array of size batch_size x sequence_length x n_tracks
 
     """
     if cp.unique(query_ends - query_starts).size != 1:
@@ -86,16 +106,28 @@ def intervals_to_values(
             absolute_indices=True,
         )
 
+    # Determine output dtype
+    if dtype == 'bfloat16':
+        # cupy does not support bfloat16 yet,
+        # but the cuda kernel that does the
+        # conversion does
+        out_dtype = cp.unint16
+    else:
+        out_dtype = cp.float32
+
+    reduced_sequence_length = sequence_length // window_size
+    batch_size = len(query_starts)
+    num_tracks = found_starts.shape[0]
+
     if out is None:
         logging.debug(f"Creating new out tensor with default value {default_value}")
-
+        # NEW ORDER: batch_size x sequence_length x n_tracks
         out = cp.full(
-            (found_starts.shape[0], len(query_starts), sequence_length // window_size),
+            (batch_size, reduced_sequence_length, num_tracks),
             default_value,
-            dtype=cp.float32,
+            dtype=out_dtype,
         )
         logging.debug(out)
-
     else:
         logging.debug(f"Setting default value in output tensor to {default_value}")
         out.fill(default_value)
@@ -104,8 +136,6 @@ def intervals_to_values(
     max_number_intervals = min(
         sequence_length, (found_ends - found_starts).max().item()
     )
-    batch_size = query_starts.shape[0]
-    num_tracks = found_starts.shape[0]
 
     if window_size == 1:
         n_threads_needed = batch_size * max_number_intervals * num_tracks
@@ -147,6 +177,7 @@ def intervals_to_values(
             default_value_isnan,
             out,
         ),
+        dtype=dtype
     )
     return out
 

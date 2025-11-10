@@ -87,6 +87,12 @@ class BigWigDataset:
             tracks in case sub_sample_tracks is set. Should be Iterable batches of track indices.
         return_batch_objects: if True, the batches will be returned as instances of
             bigwig_loader.batch.Batch
+        dtype: float32 or bfloat16 output encoding of the target values (not the sequence encoding).
+            Cupy does not support bfloat16 yet, but the cuda kernel that creates the target values
+            does. When bfloat16 is choosen, the cupy array will show to have the data type uint16
+            which can, for example, be converted to a torch.bfloat16 by
+            torch_tensor = torch.as_tensor(out) # torch uint16
+            torch_tensor = torch_tensor.view(torch.bfloat16)    # Reinterpret as bfloat16
     """
 
     def __init__(
@@ -107,7 +113,7 @@ class BigWigDataset:
         ] = "onehot",
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
-        scale: Optional[dict[Union[str | Path], Any]] = None,
+        scale: Optional[dict[Union[str, Path], Any]] = None,
         default_value: float = 0.0,
         first_n_files: Optional[int] = None,
         position_sampler_buffer_size: int = 100000,
@@ -117,6 +123,7 @@ class BigWigDataset:
         custom_position_sampler: Optional[Iterable[tuple[str, int]]] = None,
         custom_track_sampler: Optional[Iterable[list[int]]] = None,
         return_batch_objects: bool = False,
+        dtype: Literal["float32", "bfloat16"] = "bfloat16"
     ):
         super().__init__()
 
@@ -176,6 +183,8 @@ class BigWigDataset:
         else:
             self._track_sampler = None
 
+        self._dtype = dtype
+
     def _create_dataloader(self) -> StreamedDataloader:
         sequence_sampler = GenomicSequenceSampler(
             reference_genome_path=self.reference_genome_path,
@@ -199,6 +208,7 @@ class BigWigDataset:
             slice_size=self.batch_size,
             window_size=self.window_size,
             default_value=self._default_value,
+            dtype=self._dtype,
         )
 
     def __iter__(
