@@ -1,5 +1,6 @@
 import cupy as cp
 import pytest
+from conftest import all_close
 
 from bigwig_loader.intervals_to_values import intervals_to_values
 
@@ -230,8 +231,9 @@ def test_get_values_from_intervals_batch_of_2(default_value) -> None:
     assert cp.allclose(expected, values, equal_nan=True)
 
 
+@pytest.mark.parametrize("dtype", ["bfloat16", "float32"])
 @pytest.mark.parametrize("default_value", [0.0, cp.nan])
-def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
+def test_get_values_from_intervals_batch_multiple_tracks(dtype, default_value) -> None:
     """Query end is exactly at end index before "gap"."""
     track_starts = cp.asarray(
         [5, 10, 12, 18, 8, 9, 10, 18, 25, 10, 100, 1000], dtype=cp.int32
@@ -246,7 +248,7 @@ def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
     query_starts = cp.asarray([7, 9, 20, 99], dtype=cp.int32)
     query_ends = cp.asarray([18, 20, 31, 110], dtype=cp.int32)
     # reserved = cp.zeros([3, 4, 11], dtype=cp.dtype("<f4"))
-    reserved = cp.zeros([4, 11, 3], dtype=cp.dtype("<f4"))
+    # reserved = cp.zeros([4, 11, 3], dtype=cp.dtype("<f4"))
     values = intervals_to_values(
         track_starts,
         track_ends,
@@ -254,8 +256,9 @@ def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
         query_starts,
         query_ends,
         default_value=default_value,
-        out=reserved,
+        # out=reserved,
         sizes=cp.asarray([4, 5, 3], dtype=cp.int32),
+        dtype=dtype,
     )
     x = default_value
     expected = cp.asarray(
@@ -311,4 +314,4 @@ def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
     print(expected)
     print("Actual Values:", values.shape)
     print(values)
-    assert cp.allclose(expected, values, equal_nan=True)
+    assert all_close(expected, values, dtype)
