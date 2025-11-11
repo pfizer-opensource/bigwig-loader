@@ -243,7 +243,7 @@ class StreamedDataloader:
                         stream.synchronize()
 
                         if not self.track_dimension_last:
-                            values = values.transpose(1, 2)
+                            values = values.transpose(0, 2, 1)
 
                     yield sliced_query
 

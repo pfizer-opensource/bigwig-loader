@@ -41,7 +41,7 @@ def dataset_with_track_sampling(bigwig_path, reference_genome_path, merged_inter
 def test_output_shape(dataset):
     for i, (sequence, values) in enumerate(dataset):
         print(i, "---", flush=True)
-        assert values.shape == (265, 2, 250)
+        assert values.shape == (265, 250, 2)
 
 
 def test_output_shape_sub_sampled_tracks(dataset_with_track_sampling):
@@ -50,7 +50,7 @@ def test_output_shape_sub_sampled_tracks(dataset_with_track_sampling):
     ):
         print(i, "---", flush=True)
         assert len(track_indices) == 1
-        assert values.shape == (265, 1, 250)
+        assert values.shape == (265, 250, 1)
 
 
 def test_batch_return_type(bigwig_path, reference_genome_path, merged_intervals):

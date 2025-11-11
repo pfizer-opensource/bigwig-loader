@@ -22,9 +22,11 @@ class Kernel:
             "float32": "intervals_to_values_float32",
             "bfloat16": "intervals_to_values_bfloat16",
         }
-        self._kernels = {}
+        self._kernels: dict[str, cp.RawKernel] = {}
 
-    def get_kernel_by_dtype(self, dtype: Literal["float32", "bfloat16"]):
+    def get_kernel_by_dtype(
+        self, dtype: Literal["float32", "bfloat16"]
+    ) -> cp.RawKernel:
         if dtype in self._kernels:
             return self._kernels[dtype]
         kernel = cp.RawKernel(self.kernel_code, self.kernel_names[dtype])
@@ -32,7 +34,9 @@ class Kernel:
         self._kernels[dtype] = kernel
         return kernel
 
-    def __call__(self, *args, dtype: Literal["float32", "bfloat16"], **kwargs):
+    def __call__(  # type: ignore[no-untyped-def]
+        self, *args, dtype: Literal["float32", "bfloat16"], **kwargs
+    ) -> cp.ndarray:
         kernel = self.get_kernel_by_dtype(dtype=dtype)
         return kernel(*args, **kwargs)
 

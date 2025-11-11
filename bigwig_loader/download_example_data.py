@@ -84,6 +84,10 @@ EXAMPLE_FILES = {
         "https://www.encodeproject.org/files/ENCFF270ISQ/@@download/ENCFF270ISQ.bigWig",
         "5fef60f9f1e43b9a17075c352650865e",
     ),
+    "mc_Late_Childhood_GLU_BS.bins128.bw": (
+        "https://brainome.ucsd.edu/emukamel/PEC_igv/binc_bigwig/mc_Late_Childhood_GLU_BS.bins128.bw",
+        "c91eee81f11e4dc7cecaae72abd14c66",
+    ),
 }
 
 

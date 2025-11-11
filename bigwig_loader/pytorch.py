@@ -75,7 +75,7 @@ class PytorchBatch:
 
     @classmethod
     def from_batch(
-        cls, batch: Batch, dtype: Literal["float32", "bfloat16"] = "bfloat16"
+        cls, batch: Batch, dtype: Literal["float32", "bfloat16"] = "float32"
     ) -> "PytorchBatch":
         if batch.other_batched is not None:
             other_batched = (

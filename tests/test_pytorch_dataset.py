@@ -28,7 +28,7 @@ def pytorch_dataset(bigwig_path, reference_genome_path, merged_intervals):
 
 def test_pytorch_dataset(pytorch_dataset):
     for sequence, target in pytorch_dataset:
-        assert target.shape == (256, 2, 1000)
+        assert target.shape == (256, 1000, 2)
 
 
 def test_input_and_target_is_torch_tensor(pytorch_dataset):
@@ -37,7 +37,7 @@ def test_input_and_target_is_torch_tensor(pytorch_dataset):
     assert isinstance(target, torch.Tensor)
 
 
-@pytest.mark.parametrize("default_value", [0.0, torch.nan, 4.0, 5.6])
+@pytest.mark.parametrize("default_value", [0.0, 4.0, 5.6, torch.nan])
 def test_pytorch_dataset_with_window_function(
     default_value, bigwig_path, reference_genome_path, merged_intervals
 ):
@@ -99,17 +99,25 @@ def test_pytorch_dataset_with_window_function(
         print(batch_with_window.starts)
         print(batch.ends)
         print(batch_with_window.ends)
+        # expected = batch.values.reshape(
+        #     batch.values.shape[0], batch.values.shape[1], reduced_dim, window_size
+        # )
         expected = batch.values.reshape(
-            batch.values.shape[0], batch.values.shape[1], reduced_dim, window_size
+            batch.values.shape[0],
+            reduced_dim,
+            window_size,
+            batch.values.shape[-1],
         )
         if not isnan(default_value) or default_value == 0:
             expected = torch.nan_to_num(expected, nan=default_value)
-        expected = torch.nanmean(expected, axis=-1)
-        print("---")
-        print("expected")
-        print(expected)
-        print("batch_with_window")
-        print(batch_with_window.values)
+        expected = torch.nanmean(expected, axis=-2)
+        # print("---")
+        # print("expected")
+        # print(expected)
+        # print("batch_with_window")
+        # print(batch_with_window.values)
         assert torch.allclose(expected, batch_with_window.values, equal_nan=True)
+
+        # TODO: I need the bigwig file with empty intervals
         if isnan(default_value):
             assert torch.isnan(batch_with_window.values).any()

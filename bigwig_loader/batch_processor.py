@@ -69,7 +69,7 @@ class BatchProcessor:
             tensor of shape (number of bigwig files, batch_size, sequence_length)
         """
 
-        shape = (len(self._bigwigs), batch_size, sequence_length)
+        shape = (batch_size, sequence_length, len(self._bigwigs))
         if self._out.shape != shape:
             self._out = cp.zeros(shape, dtype=cp.float32)
         return self._out
@@ -141,7 +141,7 @@ class BatchProcessor:
             default_value=default_value,
             out=out,
         )
-        batch = cp.transpose(out, (1, 0, 2))
+        # batch = cp.transpose(out, (1, 0, 2))
         if scaling_factors_cupy is not None:
-            batch *= scaling_factors_cupy
-        return batch
+            out *= scaling_factors_cupy
+        return out

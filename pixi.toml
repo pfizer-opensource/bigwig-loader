@@ -7,7 +7,12 @@ conda-pypi-map = { "conda-forge" = "conda-forge-pypi-map.json" }
 
 
 [tasks]
-test = { cmd = "pytest tests/test_intervals_to_values_window_function.py -vv -k test_get_values_from_intervals_edge_case_1"}
+# test = { cmd = "pytest tests/test_intervals_to_values_window_function.py -vv" } # -k test_get_values_from_intervals_edge_case_1"}
+# test = { cmd = "pytest tests/test_intervals_to_values.py -vv" } # -k test_get_values_from_intervals_edge_case_1"}
+download-example-data = { cmd = "python -m bigwig_loader.download_example_data"}
+test = { cmd = "pytest -v" }
+
+
 
 
 [feature.gpu.system-requirements]

@@ -96,15 +96,17 @@ void intervals_to_values_kernel(
             int end_index = min(interval_end, query_end) - query_start;
 
             if (start_index >= window_end) {
-                float final_value = (valid_count > 0) ? (summation / valid_count) : 0.0f;
+                float final_value;
+                if (default_value_isnan) {
+                    final_value = (valid_count > 0) ? (summation / valid_count) : CUDART_NAN_F;
+                } else {
+                    summation = summation + (window_size - valid_count) * default_value;
+                    final_value = summation / window_size;
+                }
 
                 // Apply scaling factor
                 if (scaling_factors != nullptr) {
                     final_value *= scaling_factors[track_index];
-                }
-
-                if (default_value_isnan && valid_count == 0) {
-                    final_value = CUDART_NAN_F;
                 }
 
                 T out_value = cast_value<T>(final_value);
@@ -125,15 +127,17 @@ void intervals_to_values_kernel(
             }
 
             if (end_index >= window_end || cursor + 1 >= found_end_index) {
-                float final_value = (valid_count > 0) ? (summation / valid_count) : 0.0f;
+                float final_value;
+                if (default_value_isnan) {
+                    final_value = (valid_count > 0) ? (summation / valid_count) : CUDART_NAN_F;
+                } else {
+                    summation = summation + (window_size - valid_count) * default_value;
+                    final_value = summation / window_size;
+                }
 
                 // Apply scaling factor
                 if (scaling_factors != nullptr) {
                     final_value *= scaling_factors[track_index];
-                }
-
-                if (default_value_isnan && valid_count == 0) {
-                    final_value = CUDART_NAN_F;
                 }
 
                 T out_value = cast_value<T>(final_value);

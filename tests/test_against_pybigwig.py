@@ -40,6 +40,8 @@ def test_same_output(bigwig_path):
 
     pybigwig_batch = pybigwig_collection.get_batch(chromosomes, starts, ends)
     np.nan_to_num(pybigwig_batch, copy=False, nan=0.0)
+    pybigwig_batch = pybigwig_batch.transpose(0, 2, 1)
+
     this_batch = collection.get_batch(chromosomes, starts, ends).get()
     print("PyBigWig:")
     print(pybigwig_batch)
@@ -64,7 +66,9 @@ def test_same_output_with_nans(bigwig_path):
         list(df["center"] + 1000),
     )
 
-    pybigwig_batch = pybigwig_collection.get_batch(chromosomes, starts, ends)
+    pybigwig_batch = pybigwig_collection.get_batch(chromosomes, starts, ends).transpose(
+        0, 2, 1
+    )
 
     this_batch = collection.get_batch(
         chromosomes, starts, ends, default_value=np.nan
@@ -115,6 +119,8 @@ def test_windowed_output_against_pybigwig(
     pybigwig_batch = np.nan_to_num(pybigwig_batch, copy=False, nan=default_value)
     # And take mean over the window
     pybigwig_batch = np.nanmean(pybigwig_batch, axis=-1)
+
+    pybigwig_batch = pybigwig_batch.transpose(0, 2, 1)
 
     print("PyBigWig (with window function applied afterwards):")
     print(pybigwig_batch)
