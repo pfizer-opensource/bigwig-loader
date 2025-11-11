@@ -2,6 +2,7 @@ from functools import cached_property
 
 # from typing import TYPE_CHECKING
 from typing import Callable
+from typing import Literal
 from typing import Optional
 from typing import Sequence
 from typing import Union
@@ -12,6 +13,7 @@ import numpy.typing as npt
 
 from bigwig_loader.bigwig import BigWig
 from bigwig_loader.decompressor import Decoder
+from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.functional import load_decode_search
 from bigwig_loader.intervals_to_values import intervals_to_values
 from bigwig_loader.memory_bank import MemoryBank
@@ -59,19 +61,29 @@ class BatchProcessor:
     def memory_bank(self) -> MemoryBank:
         return MemoryBank(elastic=True)
 
-    def _get_out_tensor(self, batch_size: int, sequence_length: int) -> cp.ndarray:
+    def _get_out_tensor(
+        self,
+        batch_size: int,
+        sequence_length: int,
+        dtype: Literal["bfloat16", "float32"] = "float32",
+    ) -> cp.ndarray:
         """Resuses a reserved tensor if possible (when out shape is constant),
         otherwise creates a new one.
         args:
             batch_size: batch size
             sequence_length: length of genomic sequence
+            dtype: output dtype ('float32' or 'bfloat16')
          returns:
-            tensor of shape (number of bigwig files, batch_size, sequence_length)
+            tensor of shape (batch_size, sequence_length, number of bigwig files)
         """
 
-        shape = (batch_size, sequence_length, len(self._bigwigs))
-        if self._out.shape != shape:
-            self._out = cp.zeros(shape, dtype=cp.float32)
+        self._out = replace_out_tensor_if_needed(
+            self._out,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            number_of_tracks=len(self._bigwigs),
+            dtype=dtype,
+        )
         return self._out
 
     def preprocess(
@@ -105,6 +117,7 @@ class BatchProcessor:
         window_size: int = 1,
         scaling_factors_cupy: Optional[cp.ndarray] = None,
         default_value: float = 0.0,
+        dtype: Literal["float32", "bfloat16"] = "float32",
         out: Optional[cp.ndarray] = None,
     ) -> cp.ndarray:
         (
@@ -139,6 +152,7 @@ class BatchProcessor:
             query_ends=abs_end,
             window_size=window_size,
             default_value=default_value,
+            dtype=dtype,
             out=out,
         )
         # batch = cp.transpose(out, (1, 0, 2))

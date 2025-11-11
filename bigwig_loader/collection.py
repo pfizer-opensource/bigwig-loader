@@ -97,7 +97,7 @@ class BigWigCollection:
         need to be recreated on the new gpu.
         """
 
-        self._out = cp.zeros(1, (len(self), 1), dtype=cp.float32)
+        # self._out = cp.zeros(1, (len(self), 1), dtype=cp.float32)
         if "decoder" in self.__dict__:
             del self.__dict__["decoder"]
         if "memory_bank" in self.__dict__:

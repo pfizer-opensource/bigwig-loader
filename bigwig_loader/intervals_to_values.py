@@ -6,6 +6,7 @@ from typing import Literal
 
 import cupy as cp
 
+from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.searchsorted import interval_searchsorted
 
 CUDA_KERNEL_DIR = Path(__file__).parent.parent / "cuda_kernels"
@@ -112,32 +113,19 @@ def intervals_to_values(
             absolute_indices=True,
         )
 
-    # Determine output dtype
-    if dtype == "bfloat16":
-        # cupy does not support bfloat16 yet,
-        # but the cuda kernel that does the
-        # conversion does
-        out_dtype = cp.uint16
-    else:
-        out_dtype = cp.float32
-
     reduced_sequence_length = sequence_length // window_size
     batch_size = len(query_starts)
     num_tracks = found_starts.shape[0]
 
-    if out is None:
-        logging.debug(f"Creating new out tensor with default value {default_value}")
-        # NEW ORDER: batch_size x sequence_length x n_tracks
-        out = cp.full(
-            (batch_size, reduced_sequence_length, num_tracks),
-            default_value,
-            dtype=out_dtype,
-        )
-        logging.debug(out)
-    else:
-        logging.debug(f"Setting default value in output tensor to {default_value}")
-        out.fill(default_value)
-        logging.debug(out)
+    out = replace_out_tensor_if_needed(
+        out,
+        batch_size=batch_size,
+        sequence_length=reduced_sequence_length,
+        number_of_tracks=num_tracks,
+        default_value=default_value,
+        dtype=dtype,
+        reset_values=True,
+    )
 
     max_number_intervals = min(
         sequence_length, (found_ends - found_starts).max().item()

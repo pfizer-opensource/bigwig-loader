@@ -13,6 +13,7 @@ from bigwig_loader.batch import IntervalType
 from bigwig_loader.batch_processor import BatchProcessor
 from bigwig_loader.batch_processor import PreprocessedReturnType
 from bigwig_loader.collection import BigWigCollection
+from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.intervals_to_values import intervals_to_values
 
 InputBatchType = Batch | IntervalType
@@ -259,17 +260,14 @@ class StreamedDataloader:
     def _get_out_tensor(
         self, batch_size: int, sequence_length: int, number_of_tracks: int
     ) -> cp.ndarray:
-        """Get output tensor in the correct shape: batch_size x sequence_length x n_tracks"""
-        shape = (batch_size, sequence_length, number_of_tracks)
-
-        out_dtype = cp.uint16 if self._dtype == "bfloat16" else cp.float32
-
-        if (
-            self._out is None
-            or self._out.shape != shape
-            or self._out.dtype != out_dtype
-        ):
-            self._out = cp.full(shape, self._default_value, dtype=out_dtype)
+        self._out = replace_out_tensor_if_needed(
+            tensor=self._out,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            number_of_tracks=number_of_tracks,
+            default_value=self._default_value,
+            dtype=self._dtype,
+        )
         return self._out
 
     def _determine_slice_size(self, n_samples: int) -> int:

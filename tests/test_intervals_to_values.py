@@ -29,7 +29,7 @@ def test_get_values_from_intervals(default_value) -> None:
     track_values = cp.asarray([20.0, 15.0, 30.0, 40.0, 50.0], dtype=cp.dtype("f4"))
     query_starts = cp.asarray([2], dtype=cp.int32)
     query_ends = cp.asarray([17], dtype=cp.int32)
-    reserved = cp.zeros((1, 15), dtype=cp.float32)
+    reserved = cp.zeros((1, 15, 1), dtype=cp.float32)
     values = intervals_to_values(
         track_starts,
         track_ends,
@@ -41,7 +41,12 @@ def test_get_values_from_intervals(default_value) -> None:
     )
     expected = cp.asarray(
         [[20, 15, 15, 15, 15, 15, 15, 15, 30, 30, 40, 40, 40, 40, 50]]
-    )
+    ).transpose(1, 0)
+    print("expected", expected.shape)
+    print(expected)
+    print("actual", values.shape)
+    print(values)
+
     assert cp.allclose(expected, values, equal_nan=True)
 
 
@@ -64,14 +69,16 @@ def test_get_values_from_intervals_edge_case_1(default_value) -> None:
         out=reserved,
     )
     x = default_value
-    expected = cp.asarray([[x, x, x, x, 30, 30, 40, 40, 40, 40, 50, 50]])
+    expected = cp.asarray([[[x, x, x, x, 30, 30, 40, 40, 40, 40, 50, 50]]]).transpose(
+        0, 2, 1
+    )
 
     print(expected)
     print(values)
 
     assert (
         cp.allclose(values, expected, equal_nan=True)
-        and expected.shape[-1] == query_ends[0] - query_starts[0]
+        and expected.shape[1] == query_ends[0] - query_starts[0]
     )
 
 
@@ -93,10 +100,10 @@ def test_get_values_from_intervals_edge_case_2(default_value) -> None:
         default_value=default_value,
         out=reserved,
     )
-    expected = cp.asarray([[30, 30, 40, 40, 40, 40, 50, 50]])
+    expected = cp.asarray([[[30, 30, 40, 40, 40, 40, 50, 50]]]).transpose(0, 2, 1)
     assert (
         cp.allclose(values, expected, equal_nan=True)
-        and expected.shape[-1] == query_ends[0] - query_starts[0]
+        and expected.shape[1] == query_ends[0] - query_starts[0]
     )
 
 
@@ -119,10 +126,10 @@ def test_get_values_from_intervals_edge_case_3(default_value) -> None:
         out=reserved,
     )
     x = default_value
-    expected = cp.asarray([[20, 30, 30, 40, 40, x, x]])
+    expected = cp.asarray([[[20, 30, 30, 40, 40, x, x]]]).transpose(0, 2, 1)
     assert (
         cp.allclose(values, expected, equal_nan=True)
-        and expected.shape[-1] == query_ends[0] - query_starts[0]
+        and expected.shape[1] == query_ends[0] - query_starts[0]
     )
 
 
@@ -144,12 +151,12 @@ def test_get_values_from_intervals_edge_case_4(default_value) -> None:
         default_value=default_value,
         out=reserved,
     )
-    expected = cp.asarray([[20, 30, 30, 40, 40]])
+    expected = cp.asarray([[[20, 30, 30, 40, 40]]]).transpose(0, 2, 1)
 
     print(expected)
     print(values)
 
-    assert (values == expected).all() and expected.shape[-1] == query_ends[
+    assert (values == expected).all() and expected.shape[1] == query_ends[
         0
     ] - query_starts[0]
 
@@ -173,14 +180,16 @@ def test_get_values_from_intervals_edge_case_5(default_value) -> None:
         out=reserved,
     )
     x = default_value
-    expected = cp.asarray([[20, 30, 30, 40, 40, x, x, x, x, 50, 50]])
+    expected = cp.asarray([[[20, 30, 30, 40, 40, x, x, x, x, 50, 50]]]).transpose(
+        0, 2, 1
+    )
 
     print(expected)
     print(values)
 
     assert (
         cp.allclose(expected, values, equal_nan=True)
-        and expected.shape[-1] == query_ends[0] - query_starts[0]
+        and expected.shape[1] == query_ends[0] - query_starts[0]
     )
 
 
@@ -207,12 +216,17 @@ def test_get_values_from_intervals_batch_of_2(default_value) -> None:
 
     expected = cp.asarray(
         [
-            [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x],
-            [20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x, 50.0, 50.0],
+            [
+                [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x],
+                [20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x, 50.0, 50.0],
+            ]
         ]
-    )
+    ).transpose(1, 2, 0)
+
+    print("expected", expected.shape)
     print(expected)
-    print(values)
+    print("actual", values.shape)
+    print(values, values.shape)
     assert cp.allclose(expected, values, equal_nan=True)
 
 
