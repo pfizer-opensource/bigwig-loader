@@ -12,7 +12,7 @@ env:
 jobs:
   tests-using-pixi:
     timeout-minutes: 10
-    runs-on: ubuntu-larger-runner
+    runs-on: ubuntu-24.04-gpu-t4
     steps:
     - name: Check out the repository
       uses: actions/checkout@v4
