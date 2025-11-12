@@ -424,7 +424,7 @@ class BigWig:
         data_offsets = self.rtree_leaf_nodes["data_offset"]
         data_sizes = self.rtree_leaf_nodes["data_size"]
         if len(data_offsets) > sample_size:
-            sample_indices = sample(range(len(data_offsets)), sample_size)
+            sample_indices = sample(range(len(data_offsets)), sample_size)  # nosec
             data_offsets = data_offsets[sample_indices]
             data_sizes = data_sizes[sample_indices]
 

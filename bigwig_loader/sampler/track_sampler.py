@@ -9,4 +9,6 @@ class TrackSampler:
 
     def __iter__(self) -> Iterator[list[int]]:
         while True:
-            yield sorted(sample(range(self.total_number_of_tracks), self.sample_size))
+            yield sorted(
+                sample(range(self.total_number_of_tracks), self.sample_size)  # nosec
+            )
