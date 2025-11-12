@@ -60,6 +60,6 @@ asgi-lifespan = "*"
 pyBigWig = "*"
 
 [environments]
-mac = {features = ["cpu", "test"]}
 prod = {features = ["gpu", "released"]}
 dev = {features = ["gpu", "dev", "test"]}
+dev-cpu = {features = ["cpu", "test"] }
