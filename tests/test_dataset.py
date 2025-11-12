@@ -42,6 +42,7 @@ def test_output_shape(dataset):
     for i, (sequence, values) in enumerate(dataset):
         print(i, "---", flush=True)
         assert values.shape == (265, 250, 2)
+        assert sequence.shape == (265, 2000, 4)
 
 
 def test_output_shape_sub_sampled_tracks(dataset_with_track_sampling):
