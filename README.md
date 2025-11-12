@@ -5,21 +5,29 @@ for deep learning applications.
 
 > ⚠️ **BREAKING CHANGE (v0.3.0+)**: The output matrix dimensionality has changed from `(n_tracks, batch_size, sequence_length)` to `(batch_size, sequence_length, n_tracks)`. This change was long overdue and eliminates the need for (potentially memory expensive) transpose operations downstream. If you're upgrading from an earlier version, please update your code accordingly (probaby you need to delete one transpose in your code).
 
+> ✨ **NEW FEATURE (v0.3.0+)**: Full `bfloat16` support! You can now specify `dtype="bfloat16"` to get output tensors in bfloat16 format, reducing memory usage by 50%.
+
 
 
 
 ## Quickstart
 
 ### Installation with Pixi
-
+Using [pixi](https://pixi.sh/) to install bigwig-loader is highly recommended.
 Please take a look at the pixi.toml file. If you just want to use bigwig-loader, just
 copy that pixi.toml, add the other libraries you need and use the "prod" environment
 (you don't need to clone this repo, pixi will download bigwig-loader from the
 conda "dataloading" channel):
 
-```shell
-pixi run -e prod <my_training_command>
-```
+*   Install pixi, if not installed:
+    ```shell
+    curl -fsSL https://pixi.sh/install.sh | sh
+    ```
+
+* change directory to wherever you put the pixi.toml, and:
+    ```shell
+    pixi run -e prod <my_training_command>
+    ```
 
 
 ### Installation with conda/mamba
