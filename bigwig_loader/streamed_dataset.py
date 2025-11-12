@@ -112,7 +112,6 @@ class StreamedDataloader:
         window_size: int = 1,
         default_value: float = 0.0,
         dtype: Literal["float32", "bfloat16"] = "float32",
-        track_dimension_last: bool = False,
     ):
         self.input_generator = input_generator
         self.collection = collection
@@ -134,7 +133,6 @@ class StreamedDataloader:
         self._out = None
         self._default_value = default_value
         self._dtype = dtype
-        self.track_dimension_last = track_dimension_last
 
     def __enter__(self) -> "StreamedDataloader":
         self._entered = True
@@ -242,9 +240,6 @@ class StreamedDataloader:
                         sliced_query = batch[select]
                         sliced_query.values = values
                         stream.synchronize()
-
-                        if not self.track_dimension_last:
-                            values = values.transpose(0, 2, 1)
 
                     yield sliced_query
 
