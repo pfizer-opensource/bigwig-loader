@@ -1,0 +1,5 @@
+{
+  "pytorch": "torch",
+  "pytorch-gpu": "torch",
+  "pytorch-cpu": "torch"
+}

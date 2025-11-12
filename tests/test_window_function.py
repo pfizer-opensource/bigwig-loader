@@ -36,11 +36,11 @@ def test_same_output(bigwig_path, window_size, default_value):
     else:
         assert not cp.isnan(full_batch).any()
 
-    full_matrix = full_batch[:, :, : reduced_dim * window_size]
+    full_matrix = full_batch[:, : reduced_dim * window_size, :]
     full_matrix = full_matrix.reshape(
-        full_matrix.shape[0], full_matrix.shape[1], reduced_dim, window_size
+        full_matrix.shape[0], reduced_dim, window_size, full_matrix.shape[-1]
     )
-    expected = cp.nanmean(full_matrix, axis=-1)
+    expected = cp.nanmean(full_matrix, axis=-2)
     print(batch_with_window)
     print(expected)
     assert cp.allclose(expected, batch_with_window, equal_nan=True)
@@ -105,15 +105,18 @@ def test_dataset_with_window_function(
         print(batch.ends)
         print(batch_with_window.ends)
         expected = batch.values.reshape(
-            batch.values.shape[0], batch.values.shape[1], reduced_dim, window_size
+            batch.values.shape[0],
+            reduced_dim,
+            window_size,
+            batch.values.shape[-1],
         )
         if not isnan(default_value) or default_value == 0:
             cp.nan_to_num(expected, copy=False, nan=default_value)
-        expected = cp.nanmean(expected, axis=-1)
+        expected = cp.nanmean(expected, axis=-2)
         print("---")
-        print("expected")
+        print("expected", expected.shape)
         print(expected)
-        print("batch_with_window")
+        print("batch_with_window", batch_with_window.values.shape)
         print(batch_with_window.values)
         assert cp.allclose(expected, batch_with_window.values, equal_nan=True)
         if isnan(default_value):

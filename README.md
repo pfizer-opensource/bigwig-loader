@@ -3,7 +3,32 @@
 Fast batched dataloading of BigWig files containing epigentic track data and corresponding sequences powered by GPU
 for deep learning applications.
 
+> ⚠️ **BREAKING CHANGE (v0.3.0+)**: The output matrix dimensionality has changed from `(n_tracks, batch_size, sequence_length)` to `(batch_size, sequence_length, n_tracks)`. This change was long overdue and eliminates the need for (potentially memory expensive) transpose operations downstream. If you're upgrading from an earlier version, please update your code accordingly (probaby you need to delete one transpose in your code).
+
+> ✨ **NEW FEATURE (v0.3.0+)**: Full `bfloat16` support! You can now specify `dtype="bfloat16"` to get output tensors in bfloat16 format, reducing memory usage by 50%.
+
+
+
+
 ## Quickstart
+
+### Installation with Pixi
+Using [pixi](https://pixi.sh/) to install bigwig-loader is highly recommended.
+Please take a look at the pixi.toml file. If you just want to use bigwig-loader, just
+copy that pixi.toml, add the other libraries you need and use the "prod" environment
+(you don't need to clone this repo, pixi will download bigwig-loader from the
+conda "dataloading" channel):
+
+*   Install pixi, if not installed:
+    ```shell
+    curl -fsSL https://pixi.sh/install.sh | sh
+    ```
+
+* change directory to wherever you put the pixi.toml, and:
+    ```shell
+    pixi run -e prod <my_training_command>
+    ```
+
 
 ### Installation with conda/mamba
 
@@ -65,16 +90,17 @@ dataset = PytorchBigWigDataset(
     regions_of_interest=train_regions,
     collection=example_bigwigs_directory,
     reference_genome_path=reference_genome_file,
-    sequence_length=1000,
-    center_bin_to_predict=500,
+    sequence_length=1000,000,
+    center_bin_to_predict=500,000,
     window_size=1,
-    batch_size=32,
-    super_batch_size=1024,
-    batches_per_epoch=20,
+    batch_size=1,
+    super_batch_size=4,
+    batches_per_epoch=100,
     maximum_unknown_bases_fraction=0.1,
     sequence_encoder="onehot",
     n_threads=4,
     return_batch_objects=True,
+    dtype="bfloat16"
 )
 
 # Don't use num_workers > 0 in DataLoader. The heavy
@@ -88,7 +114,7 @@ class MyTerribleModel(torch.nn.Module):
         self.linear = torch.nn.Linear(4, 2)
 
     def forward(self, batch):
-        return self.linear(batch).transpose(1, 2)
+        return self.linear(batch)
 
 
 model = MyTerribleModel()
@@ -98,10 +124,10 @@ def poisson_loss(pred, target):
     return (pred - target * torch.log(pred.clamp(min=1e-8))).mean()
 
 for batch in dataloader:
-    # batch.sequences.shape = n_batch (32), sequence_length (1000), onehot encoding (4)
+    # batch.sequences.shape = n_batch x sequence_length x onehot encoding (4)
     pred = model(batch.sequences)
-    # batch.values.shape = n_batch (32), n_tracks (2) center_bin_to_predict (500)
-    loss = poisson_loss(pred[:, :, 250:750], batch.values)
+    # batch.values.shape = n_batch x center_bin_to_predict x n_tracks
+    loss = poisson_loss(pred[:, 250000:750000, :], batch.values)
     print(loss)
     optimizer.zero_grad()
     loss.backward()
@@ -166,19 +192,23 @@ anything is unclear, please open an issue.
 
 ### Environment
 
+The pixi.toml includes a dev environment that has bigwig-loader installed
+as an editable pypi dependency.
+
 1. `git clone git@github.com:pfizer-opensource/bigwig-loader`
 2. `cd bigwig-loader`
-3. create the conda environment" `conda env create -f environment.yml`
-4. `pip install -e '.[dev]'`
-5. run `pre-commit install` to install the pre-commit hooks
+3. optional: `pixi install -e dev`
+4. run `pre-commit install` to install the pre-commit hooks
 
 ### Run Tests
 Tests are in the tests directory. One of the most important tests is
 test_against_pybigwig which makes sure that if there is a mistake in
 pyBigWIg, it is also in bigwig-loader.
 
+In order to run these tests you need gpu.
+
 ```shell
-pytest -vv .
+pixi run -e dev test
 ```
 
 When github runners with GPU's will become available we would also

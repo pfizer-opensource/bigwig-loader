@@ -1,0 +1,65 @@
+[workspace]
+channels = ["rapidsai", "conda-forge", "nvidia", "bioconda", "dataloading"]
+name = "nucleotides-diffusion"
+platforms = ["linux-64", "osx-arm64"]
+version = "0.1.0"
+conda-pypi-map = { "conda-forge" = "conda-forge-pypi-map.json" }
+
+
+[tasks]
+download-example-data = { cmd = "python -m bigwig_loader.download_example_data"}
+test = { cmd = "pytest -vv" }
+pre-commit-hooks = { cmd = "pre-commit run --all-files --show-diff-on-failure" }
+
+[feature.gpu.system-requirements]
+cuda = "12"
+
+[feature.gpu.target.linux-64.dependencies]
+cuda-version = "12.8.*"
+pytorch-gpu = ">=2.6"
+cuda-nvcc = "*"
+kvikio = "<=25.08.00"
+
+[feature.released.target.linux-64.dependencies]
+bigwig-loader = "*"
+
+[feature.dev.target.linux-64.pypi-dependencies]
+bigwig-loader = { path = ".", editable = true }
+
+[feature.cpu.target.osx-arm64.dependencies]
+pytorch-cpu = "*"
+
+[feature.cpu.target.linux-64.dependencies]
+pytorch-cpu = "*"
+
+[dependencies]
+python = "==3.11"
+pip = "*"
+numpy = "*"
+pandas = "*"
+
+[pypi-dependencies]
+python-dotenv = "*"
+pydantic = "*"
+pydantic-settings = "*"
+universal-pathlib = "*"
+fsspec = { version = "*" }
+s3fs = "*"
+pyfaidx = "*"
+numcodecs ="*"
+
+[feature.test.pypi-dependencies]
+pytest = "*"
+pytest-sugar = "*"
+pytest-cov = "*"
+pytest-mock = "*"
+mypy = "*"
+aim = "==3.28.0"
+pytest-asyncio = "*"
+asgi-lifespan = "*"
+pyBigWig = "*"
+
+[environments]
+prod = {features = ["gpu", "released"]}
+dev = {features = ["gpu", "dev", "test"]}
+dev-cpu = {features = ["cpu", "test"] }

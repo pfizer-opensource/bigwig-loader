@@ -43,7 +43,7 @@ def bigwig_dataset(bigwig_path, reference_genome_path, merged_intervals):
 
 def test_dataset(bigwig_dataset):
     for sequence, target in bigwig_dataset:
-        assert target.shape == (256, 2, 1000)
+        assert target.shape == (256, 1000, 2)
 
 
 def test_get_batch(collection):
@@ -54,7 +54,7 @@ def test_get_batch(collection):
         intervals["start"].values,
         intervals["end"].values,
     )
-    assert batch.shape == (256, n_files, 1000)
+    assert batch.shape == (256, 1000, n_files)
 
 
 def test_get_batch_with_nans(collection):
@@ -76,7 +76,7 @@ def test_get_batch_with_nans(collection):
     )
 
     print(batch)
-    assert batch.shape == (3, n_files, 1000)
+    assert batch.shape == (3, 1000, n_files)
     assert cp.any(cp.isnan(batch))
 
 
@@ -144,5 +144,5 @@ def test_scaling(bigwig_path, reference_genome_path):
     )
 
     assert cp.allclose(
-        scaled_batch, unscaled_batch * cp.asarray([3, 10]).reshape(1, 2, 1)
+        scaled_batch, unscaled_batch * cp.asarray([3, 10]).reshape(1, 1, 2)
     )

@@ -28,7 +28,7 @@ def pytorch_dataset(bigwig_path, reference_genome_path, merged_intervals):
 
 def test_pytorch_dataset(pytorch_dataset):
     for sequence, target in pytorch_dataset:
-        assert target.shape == (256, 2, 1000)
+        assert target.shape == (256, 1000, 2)
 
 
 def test_input_and_target_is_torch_tensor(pytorch_dataset):
@@ -37,9 +37,35 @@ def test_input_and_target_is_torch_tensor(pytorch_dataset):
     assert isinstance(target, torch.Tensor)
 
 
-@pytest.mark.parametrize("default_value", [0.0, torch.nan, 4.0, 5.6])
-def test_pytorch_dataset_with_window_function(
+@pytest.mark.parametrize("default_value", [4.0, 5.6])
+def test_pytorch_dataset_with_window_function_some_positive_values(
     default_value, bigwig_path, reference_genome_path, merged_intervals
+):
+    """
+    Testing window function with default values 4.0 and 5.6.
+    Unlikely you will ever do this,butgood as a test.
+    """
+    _pytorch_dataset_with_window_function(
+        default_value,
+        bigwig_path,
+        reference_genome_path,
+        merged_intervals,
+        dtype="float32",
+    )
+
+
+@pytest.mark.parametrize("dtype", ["float32", "bfloat16"])
+@pytest.mark.parametrize("default_value", [0.0, torch.nan])
+def test_pytorch_dataset_with_window_function(
+    dtype, default_value, bigwig_path, reference_genome_path, merged_intervals
+):
+    _pytorch_dataset_with_window_function(
+        default_value, bigwig_path, reference_genome_path, merged_intervals, dtype
+    )
+
+
+def _pytorch_dataset_with_window_function(
+    default_value, bigwig_path, reference_genome_path, merged_intervals, dtype
 ):
     from bigwig_loader.pytorch import PytorchBigWigDataset
 
@@ -70,6 +96,7 @@ def test_pytorch_dataset_with_window_function(
         custom_position_sampler=position_sampler,
         default_value=default_value,
         return_batch_objects=True,
+        dtype=dtype,
     )
 
     dataset_with_window = PytorchBigWigDataset(
@@ -86,6 +113,7 @@ def test_pytorch_dataset_with_window_function(
         custom_position_sampler=position_sampler,
         default_value=default_value,
         return_batch_objects=True,
+        dtype=dtype,
     )
 
     print(dataset_with_window._dataset.bigwig_collection.bigwig_paths)
@@ -99,17 +127,31 @@ def test_pytorch_dataset_with_window_function(
         print(batch_with_window.starts)
         print(batch.ends)
         print(batch_with_window.ends)
+        # expected = batch.values.reshape(
+        #     batch.values.shape[0], batch.values.shape[1], reduced_dim, window_size
+        # )
         expected = batch.values.reshape(
-            batch.values.shape[0], batch.values.shape[1], reduced_dim, window_size
+            batch.values.shape[0],
+            reduced_dim,
+            window_size,
+            batch.values.shape[-1],
         )
         if not isnan(default_value) or default_value == 0:
             expected = torch.nan_to_num(expected, nan=default_value)
-        expected = torch.nanmean(expected, axis=-1)
+        expected = torch.nanmean(expected, axis=-2)
         print("---")
-        print("expected")
-        print(expected)
-        print("batch_with_window")
-        print(batch_with_window.values)
-        assert torch.allclose(expected, batch_with_window.values, equal_nan=True)
+        print("expected", expected.shape)
+        print(expected[2, :, :])
+        print("batch_with_window", batch_with_window.values.shape)
+        print(batch_with_window.values[2, :, :])
+        # Use looser tolerances for bfloat16 due to lower precision
+        if dtype == "bfloat16":
+            assert torch.allclose(
+                expected, batch_with_window.values, rtol=1e-2, atol=1e-2, equal_nan=True
+            )
+        else:
+            assert torch.allclose(expected, batch_with_window.values, equal_nan=True)
+
+        # TODO: I need the bigwig file with empty intervals
         if isnan(default_value):
             assert torch.isnan(batch_with_window.values).any()

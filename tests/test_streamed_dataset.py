@@ -41,7 +41,7 @@ def test_dataloader(collection, example_intervals):
             if i == 2:
                 break
 
-    assert batch.values.shape == (batch_size, len(collection), sequence_length)
+    assert batch.values.shape == (batch_size, sequence_length, len(collection))
     assert len(batch.starts) == batch_size
     assert len(batch.ends) == batch_size
     assert len(batch.chromosomes) == batch_size
@@ -132,7 +132,7 @@ def test_dataloader_with_sequences_correct_slicing(collection, example_intervals
     )
     with data_loader:
         for i, batch in enumerate(data_loader):
-            assert batch.values.shape == (batch_size, len(collection), sequence_length)
+            assert batch.values.shape == (batch_size, sequence_length, len(collection))
             assert len(batch.starts) == batch_size
             assert len(batch.ends) == batch_size
             assert len(batch.chromosomes) == batch_size
@@ -199,8 +199,8 @@ def test_dataloader_with_track_indices(collection, example_intervals):
         for i, batch in enumerate(data_loader):
             assert batch.values.shape == (
                 batch_size,
-                batch.other["n_tracks"],
                 sequence_length,
+                batch.other["n_tracks"],
             )
             assert len(batch.starts) == batch_size
             assert len(batch.ends) == batch_size

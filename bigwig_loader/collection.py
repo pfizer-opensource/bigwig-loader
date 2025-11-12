@@ -97,7 +97,7 @@ class BigWigCollection:
         need to be recreated on the new gpu.
         """
 
-        self._out = cp.zeros((len(self), 1, 1), dtype=cp.float32)
+        # self._out = cp.zeros(1, (len(self), 1), dtype=cp.float32)
         if "decoder" in self.__dict__:
             del self.__dict__["decoder"]
         if "memory_bank" in self.__dict__:
@@ -131,7 +131,7 @@ class BigWigCollection:
     @cached_property
     def scaling_factors_cupy(self) -> cp.ndarray:
         return cp.asarray(self._scaling_factors, dtype=cp.float32).reshape(
-            1, len(self._scaling_factors), 1
+            1, 1, len(self._scaling_factors)
         )
 
     def get_batch(

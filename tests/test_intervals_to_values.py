@@ -1,5 +1,6 @@
 import cupy as cp
 import pytest
+from conftest import all_close
 
 from bigwig_loader.intervals_to_values import intervals_to_values
 
@@ -29,7 +30,7 @@ def test_get_values_from_intervals(default_value) -> None:
     track_values = cp.asarray([20.0, 15.0, 30.0, 40.0, 50.0], dtype=cp.dtype("f4"))
     query_starts = cp.asarray([2], dtype=cp.int32)
     query_ends = cp.asarray([17], dtype=cp.int32)
-    reserved = cp.zeros((1, 15), dtype=cp.float32)
+    reserved = cp.zeros((1, 15, 1), dtype=cp.float32)
     values = intervals_to_values(
         track_starts,
         track_ends,
@@ -41,7 +42,12 @@ def test_get_values_from_intervals(default_value) -> None:
     )
     expected = cp.asarray(
         [[20, 15, 15, 15, 15, 15, 15, 15, 30, 30, 40, 40, 40, 40, 50]]
-    )
+    ).transpose(1, 0)
+    print("expected", expected.shape)
+    print(expected)
+    print("actual", values.shape)
+    print(values)
+
     assert cp.allclose(expected, values, equal_nan=True)
 
 
@@ -64,14 +70,16 @@ def test_get_values_from_intervals_edge_case_1(default_value) -> None:
         out=reserved,
     )
     x = default_value
-    expected = cp.asarray([[x, x, x, x, 30, 30, 40, 40, 40, 40, 50, 50]])
+    expected = cp.asarray([[[x, x, x, x, 30, 30, 40, 40, 40, 40, 50, 50]]]).transpose(
+        0, 2, 1
+    )
 
     print(expected)
     print(values)
 
     assert (
         cp.allclose(values, expected, equal_nan=True)
-        and expected.shape[-1] == query_ends[0] - query_starts[0]
+        and expected.shape[1] == query_ends[0] - query_starts[0]
     )
 
 
@@ -93,10 +101,10 @@ def test_get_values_from_intervals_edge_case_2(default_value) -> None:
         default_value=default_value,
         out=reserved,
     )
-    expected = cp.asarray([[30, 30, 40, 40, 40, 40, 50, 50]])
+    expected = cp.asarray([[[30, 30, 40, 40, 40, 40, 50, 50]]]).transpose(0, 2, 1)
     assert (
         cp.allclose(values, expected, equal_nan=True)
-        and expected.shape[-1] == query_ends[0] - query_starts[0]
+        and expected.shape[1] == query_ends[0] - query_starts[0]
     )
 
 
@@ -119,10 +127,10 @@ def test_get_values_from_intervals_edge_case_3(default_value) -> None:
         out=reserved,
     )
     x = default_value
-    expected = cp.asarray([[20, 30, 30, 40, 40, x, x]])
+    expected = cp.asarray([[[20, 30, 30, 40, 40, x, x]]]).transpose(0, 2, 1)
     assert (
         cp.allclose(values, expected, equal_nan=True)
-        and expected.shape[-1] == query_ends[0] - query_starts[0]
+        and expected.shape[1] == query_ends[0] - query_starts[0]
     )
 
 
@@ -144,12 +152,12 @@ def test_get_values_from_intervals_edge_case_4(default_value) -> None:
         default_value=default_value,
         out=reserved,
     )
-    expected = cp.asarray([[20, 30, 30, 40, 40]])
+    expected = cp.asarray([[[20, 30, 30, 40, 40]]]).transpose(0, 2, 1)
 
     print(expected)
     print(values)
 
-    assert (values == expected).all() and expected.shape[-1] == query_ends[
+    assert (values == expected).all() and expected.shape[1] == query_ends[
         0
     ] - query_starts[0]
 
@@ -173,14 +181,16 @@ def test_get_values_from_intervals_edge_case_5(default_value) -> None:
         out=reserved,
     )
     x = default_value
-    expected = cp.asarray([[20, 30, 30, 40, 40, x, x, x, x, 50, 50]])
+    expected = cp.asarray([[[20, 30, 30, 40, 40, x, x, x, x, 50, 50]]]).transpose(
+        0, 2, 1
+    )
 
     print(expected)
     print(values)
 
     assert (
         cp.allclose(expected, values, equal_nan=True)
-        and expected.shape[-1] == query_ends[0] - query_starts[0]
+        and expected.shape[1] == query_ends[0] - query_starts[0]
     )
 
 
@@ -207,17 +217,23 @@ def test_get_values_from_intervals_batch_of_2(default_value) -> None:
 
     expected = cp.asarray(
         [
-            [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x],
-            [20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x, 50.0, 50.0],
+            [
+                [20.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x],
+                [20.0, 30.0, 30.0, 40.0, 40.0, x, x, x, x, 50.0, 50.0],
+            ]
         ]
-    )
+    ).transpose(1, 2, 0)
+
+    print("expected", expected.shape)
     print(expected)
-    print(values)
+    print("actual", values.shape)
+    print(values, values.shape)
     assert cp.allclose(expected, values, equal_nan=True)
 
 
+@pytest.mark.parametrize("dtype", ["bfloat16", "float32"])
 @pytest.mark.parametrize("default_value", [0.0, cp.nan])
-def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
+def test_get_values_from_intervals_batch_multiple_tracks(dtype, default_value) -> None:
     """Query end is exactly at end index before "gap"."""
     track_starts = cp.asarray(
         [5, 10, 12, 18, 8, 9, 10, 18, 25, 10, 100, 1000], dtype=cp.int32
@@ -231,7 +247,8 @@ def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
     )
     query_starts = cp.asarray([7, 9, 20, 99], dtype=cp.int32)
     query_ends = cp.asarray([18, 20, 31, 110], dtype=cp.int32)
-    reserved = cp.zeros([3, 4, 11], dtype=cp.dtype("<f4"))
+    # reserved = cp.zeros([3, 4, 11], dtype=cp.dtype("<f4"))
+    # reserved = cp.zeros([4, 11, 3], dtype=cp.dtype("<f4"))
     values = intervals_to_values(
         track_starts,
         track_ends,
@@ -239,8 +256,9 @@ def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
         query_starts,
         query_ends,
         default_value=default_value,
-        out=reserved,
+        # out=reserved,
         sizes=cp.asarray([4, 5, 3], dtype=cp.int32),
+        dtype=dtype,
     )
     x = default_value
     expected = cp.asarray(
@@ -289,6 +307,11 @@ def test_get_values_from_intervals_batch_multiple_tracks(default_value) -> None:
             ],
         ]
     )
+
+    expected = expected.transpose(1, 2, 0)
+
+    print("Expected:", expected.shape)
     print(expected)
+    print("Actual Values:", values.shape)
     print(values)
-    assert cp.allclose(expected, values, equal_nan=True)
+    assert all_close(expected, values, dtype)

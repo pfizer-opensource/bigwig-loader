@@ -21,7 +21,7 @@ void intervals_to_values(
 
     int thread = blockIdx.x * blockDim.x + threadIdx.x;
 
-//     # out is a 1D array of size batch_size x n_tracks x sequence_length
+//     # out is a 1D array of n_tracks x batch_size x sequence_length
 //
 //     # n_tracks x n_batch
 

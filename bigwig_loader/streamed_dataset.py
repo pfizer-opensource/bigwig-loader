@@ -4,6 +4,7 @@ from types import TracebackType
 from typing import Generator
 from typing import Iterable
 from typing import Iterator
+from typing import Literal
 
 import cupy as cp
 
@@ -12,6 +13,7 @@ from bigwig_loader.batch import IntervalType
 from bigwig_loader.batch_processor import BatchProcessor
 from bigwig_loader.batch_processor import PreprocessedReturnType
 from bigwig_loader.collection import BigWigCollection
+from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.intervals_to_values import intervals_to_values
 
 InputBatchType = Batch | IntervalType
@@ -109,6 +111,7 @@ class StreamedDataloader:
         slice_size: int | None = None,
         window_size: int = 1,
         default_value: float = 0.0,
+        dtype: Literal["float32", "bfloat16"] = "float32",
     ):
         self.input_generator = input_generator
         self.collection = collection
@@ -129,6 +132,7 @@ class StreamedDataloader:
         self._entered = False
         self._out = None
         self._default_value = default_value
+        self._dtype = dtype
 
     def __enter__(self) -> "StreamedDataloader":
         self._entered = True
@@ -197,17 +201,26 @@ class StreamedDataloader:
                 slice_size = self._determine_slice_size(n_samples=n_samples)
 
                 out = self._get_out_tensor(
+                    batch_size=slice_size,
                     sequence_length=(abs_end[0] - abs_start[0]).item()
                     // self.window_size,
                     number_of_tracks=found_starts.shape[0],
-                    batch_size=slice_size,
                 )
+
+                # Prepare scaling factors if needed
+                scaling_factors = None
+                if self.collection.scaling_factors_cupy is not None:
+                    scaling_factors = (
+                        self.collection.scaling_factors_cupy.squeeze()
+                    )  # Shape: (n_tracks,)
+                    if batch.track_indices is not None:
+                        scaling_factors = scaling_factors[batch.track_indices]
 
                 for select in self._slices_objects(n_samples, slice_size):
                     with self.main_stream as stream:
                         stream.synchronize()
 
-                        value_matrix = intervals_to_values(
+                        values = intervals_to_values(
                             array_start=start_data,
                             array_end=end_data,
                             array_value=value_data,
@@ -218,21 +231,15 @@ class StreamedDataloader:
                             window_size=self.window_size,
                             default_value=self._default_value,
                             out=out,
+                            dtype=self._dtype,
+                            scaling_factors=scaling_factors,  # NEW: pass scaling factors to kernel
                         )
 
-                        values = cp.transpose(value_matrix, (1, 0, 2))
-                        if self.collection.scaling_factors_cupy is not None:
-                            scaling_factors = self.collection.scaling_factors_cupy
-                            if batch.track_indices is not None:
-                                scaling_factors = scaling_factors[
-                                    :, batch.track_indices, :
-                                ]
-
-                            values *= scaling_factors
-                        stream.synchronize()
+                        # Removed the old scaling multiplication code - now handled in kernel!
 
                         sliced_query = batch[select]
                         sliced_query.values = values
+                        stream.synchronize()
 
                     yield sliced_query
 
@@ -246,12 +253,16 @@ class StreamedDataloader:
             raise e
 
     def _get_out_tensor(
-        self, number_of_tracks: int, batch_size: int, sequence_length: int
+        self, batch_size: int, sequence_length: int, number_of_tracks: int
     ) -> cp.ndarray:
-        shape = (number_of_tracks, batch_size, sequence_length)
-
-        if self._out is None or self._out.shape != shape:
-            self._out = cp.full(shape, self._default_value, dtype=cp.float32)
+        self._out = replace_out_tensor_if_needed(
+            tensor=self._out,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            number_of_tracks=number_of_tracks,
+            default_value=self._default_value,
+            dtype=self._dtype,
+        )
         return self._out
 
     def _determine_slice_size(self, n_samples: int) -> int:
