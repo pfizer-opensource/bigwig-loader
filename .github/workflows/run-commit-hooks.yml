@@ -1,4 +1,4 @@
-name: Tests-With-Pixi
+name: Check pre-commit hooks
 
 on:
   push:
@@ -12,15 +12,12 @@ env:
 jobs:
   tests-using-pixi:
     timeout-minutes: 10
-    runs-on: ubuntu-22.04-gpu-t4
+    runs-on: ubuntu-latest
     steps:
     - name: Check out the repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-
-    - name: run nvidia-smi
-      run: nvidia-smi
 
     - name: Install Pixi
       uses: prefix-dev/setup-pixi@v0.8.8
@@ -31,8 +28,8 @@ jobs:
     - name: Install pre-commit
       run: pixi global install pre-commit
 
-    - name: Install dev environment using pixi
-      run: pixi install --environment dev
+    - name: install pre-commit hooks
+      run: pre-commit install
 
-    - name: Run tests
-      run: pixi run --environment dev test
+    - name: Run pre-commit hooks
+      run: pre-commit run --all --show-diff-on-failure
