@@ -2,6 +2,7 @@ import gzip
 import hashlib
 import logging
 import shutil
+import time
 import urllib.request
 from pathlib import Path
 from typing import BinaryIO
@@ -57,7 +58,11 @@ def _download_genome(
     uncompressed_file_path: Path,
     md5_checksum: str,
 ) -> Path:
+    LOGGER.info(f"Downloading {url} to {compressed_file_path}")
+    start_time = time.time()
     urllib.request.urlretrieve(url, compressed_file_path)
+    elapsed_time = time.time() - start_time
+    LOGGER.info(f"Download completed in {elapsed_time:.2f} seconds")
     # subprocess.run(["bgzip", "-d", compressed_file])
     unzip_gz_file(compressed_file_path, uncompressed_file_path)
     this_checksum = checksum_md5_for_path(uncompressed_file_path)
@@ -86,7 +91,7 @@ EXAMPLE_FILES = {
     ),
     "mc_Late_Childhood_GLU_BS.bins128.bw": (
         "https://brainome.ucsd.edu/emukamel/PEC_igv/binc_bigwig/mc_Late_Childhood_GLU_BS.bins128.bw",
-        "c91eee81f11e4dc7cecaae72abd14c66",
+        "fc4c48b0f8df80f6e7680df47c37142f",
     ),
 }
 
@@ -109,11 +114,15 @@ def checksum_md5(f: BinaryIO, *, chunk_size: int = 10 * 1024 * 1024) -> str:
 def get_example_bigwigs_files(bigwig_dir: Path = config.bigwig_dir) -> Path:
     bigwig_dir.mkdir(parents=True, exist_ok=True)
     available_files = [pth.name for pth in get_bigwig_files_from_path(bigwig_dir)]
-    if len(available_files) < 2:
+    if len(available_files) < 3:
         for fn, (url, md5) in EXAMPLE_FILES.items():
             file = bigwig_dir / fn
             if not file.exists():
+                LOGGER.info(f"Downloading {url} to {file}")
+                start_time = time.time()
                 urllib.request.urlretrieve(url, file)
+                elapsed_time = time.time() - start_time
+                LOGGER.info(f"Download completed in {elapsed_time:.2f} seconds")
             checksum = checksum_md5_for_path(file)
             if checksum != md5:
                 raise RuntimeError(f"{fn} has incorrect checksum: {checksum} vs. {md5}")
