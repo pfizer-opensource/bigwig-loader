@@ -1,11 +1,17 @@
 # :lollipop: Epigenetics Dataloader for BigWig files
 
+[![Tests](https://github.com/pfizer-opensource/bigwig-loader/actions/workflows/tests.yml/badge.svg)](https://github.com/pfizer-opensource/bigwig-loader/actions/workflows/tests.yml)
+[![Code Quality](https://github.com/pfizer-opensource/bigwig-loader/actions/workflows/run-commit-hooks.yml/badge.svg)](https://github.com/pfizer-opensource/bigwig-loader/actions/workflows/run-commit-hooks.yml)
+
 Fast batched dataloading of BigWig files containing epigentic track data and corresponding sequences powered by GPU
 for deep learning applications.
 
 > ⚠️ **BREAKING CHANGE (v0.3.0+)**: The output matrix dimensionality has changed from `(n_tracks, batch_size, sequence_length)` to `(batch_size, sequence_length, n_tracks)`. This change was long overdue and eliminates the need for (potentially memory expensive) transpose operations downstream. If you're upgrading from an earlier version, please update your code accordingly (probaby you need to delete one transpose in your code).
 
 > ✨ **NEW FEATURE (v0.3.0+)**: Full `bfloat16` support! You can now specify `dtype="bfloat16"` to get output tensors in bfloat16 format, reducing memory usage by 50%.
+
+> ⚠️ **Cupy and bfloat16 support**
+Because cupy does not support bfloat16 yet, the cupy array is typed as uint64, but the actual data behind it is in bfloat16. So when converting the array to a tensor in a framework that DOES support bfloat16 like pytorch, tensorflow or JAX should be followed by a "view" method that just changes how the underlying bytes are interpreted (and not actually casting to bfloat16, which would change the underlaying data). In the *bigwig_loader.pytorch.PytorchBigWigDataset* this has already been done for you (when you set dtype="bfloat16").
 
 
 
@@ -14,8 +20,51 @@ for deep learning applications.
 
 ### Installation with Pixi
 Using [pixi](https://pixi.sh/) to install bigwig-loader is highly recommended.
-Please take a look at the pixi.toml file. If you just want to use bigwig-loader, just
-copy that pixi.toml, add the other libraries you need and use the "prod" environment
+Please take a look at this example pixi.toml:
+
+```toml
+[workspace]
+channels = ["rapidsai", "conda-forge", "nvidia", "bioconda", "dataloading"]
+name = "bigwig-loader"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+download-example-data = { cmd = "python -m bigwig_loader.download_example_data"}
+
+[feature.bigwig-loader.system-requirements]
+cuda = "12"
+
+[dependencies]
+python = "==3.11"
+pip = "*"
+
+[feature.bigwig-loader.dependencies]
+cuda-version = "12.8.*"
+pytorch-gpu = ">=2.6"
+cuda-nvcc = "*"
+kvikio = "<=25.08.00"
+bigwig-loader = "*"
+numpy = "*"
+pandas = "*"
+
+[pypi-dependencies]
+python-dotenv = "*"
+pydantic = "*"
+pydantic-settings = "*"
+universal-pathlib = "*"
+fsspec = { version = "*" }
+s3fs = "*"
+pyfaidx = "*"
+numcodecs ="*"
+
+[environments]
+default = {features = ["bigwig-loader"]}
+```
+
+
+If you just want to use bigwig-loader, just
+copy that into a pixi.toml file and add the other libraries you need.
 (you don't need to clone this repo, pixi will download bigwig-loader from the
 conda "dataloading" channel):
 
@@ -26,14 +75,16 @@ conda "dataloading" channel):
 
 * change directory to wherever you put the pixi.toml, and:
     ```shell
-    pixi run -e prod <my_training_command>
+    pixi run <my_training_command>
     ```
+
+
+The pixi.toml I included in this repository works for both the released version and for development of bigwig-loader, but assumes you cloned this repo.
 
 
 ### Installation with conda/mamba
 
-Bigwig-loader mainly depends on the rapidsai kvikio library and cupy, both of which are best installed using
-conda/mamba. Bigwig-loader can now also be installed using conda/mamba. To create a new environment with bigwig-loader
+Alternatively, bigwig-loader can be installed using conda/mamba. To create a new environment with bigwig-loader
 installed:
 
 ```shell

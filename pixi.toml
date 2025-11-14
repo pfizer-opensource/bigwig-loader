@@ -1,6 +1,6 @@
 [workspace]
 channels = ["rapidsai", "conda-forge", "nvidia", "bioconda", "dataloading"]
-name = "nucleotides-diffusion"
+name = "bigwig-loader"
 platforms = ["linux-64", "osx-arm64"]
 version = "0.1.0"
 conda-pypi-map = { "conda-forge" = "conda-forge-pypi-map.json" }
@@ -60,6 +60,7 @@ asgi-lifespan = "*"
 pyBigWig = "*"
 
 [environments]
-prod = {features = ["gpu", "released"]}
+default = {features = ["gpu", "released"]}
+test-released = {features = ["gpu", "released", "test"]}
 dev = {features = ["gpu", "dev", "test"]}
 dev-cpu = {features = ["cpu", "test"] }
