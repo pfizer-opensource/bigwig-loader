@@ -132,3 +132,4 @@ bigwig_loader/_version.py
 /example_data/bigwig
 /deleted
 .pfau.yml
+scratch/

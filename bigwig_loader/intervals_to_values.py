@@ -153,9 +153,13 @@ def intervals_to_values(
 
     # Handle scaling factors - convert to float32 if provided
     if scaling_factors is not None:
-        scaling_factors = cp.ascontiguousarray(scaling_factors, dtype=cp.float32)
+        scaling_factors_arr = cp.ascontiguousarray(scaling_factors, dtype=cp.float32)
+        use_scaling_factors = True
     else:
-        scaling_factors = cp.asarray([], dtype=cp.float32)
+        scaling_factors_arr = cp.empty(
+            0, dtype=cp.float32
+        )  # Empty array, won't be accessed
+        use_scaling_factors = False
 
     cuda_kernel(
         (grid_size,),
@@ -175,7 +179,8 @@ def intervals_to_values(
             window_size,
             cp.float32(default_value),
             default_value_isnan,
-            scaling_factors,
+            scaling_factors_arr,
+            use_scaling_factors,
             out,
         ),
         dtype=dtype,

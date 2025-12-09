@@ -1,3 +1,4 @@
+import logging
 import queue
 import threading
 from types import TracebackType
@@ -15,6 +16,8 @@ from bigwig_loader.batch_processor import PreprocessedReturnType
 from bigwig_loader.collection import BigWigCollection
 from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.intervals_to_values import intervals_to_values
+
+logger = logging.getLogger(__name__)
 
 InputBatchType = Batch | IntervalType
 
@@ -53,6 +56,7 @@ class WorkerContext:
 
     def _worker(self) -> None:
         while self._wait_until_ready():
+            query_received = False
             try:
                 # necessary because some other thread
                 # (for instance pytorch-lightning)
@@ -61,6 +65,7 @@ class WorkerContext:
                 with cp.cuda.Device(self.stream.device_id):
                     with self.stream as stream:
                         query = self.input_queue.get(timeout=1)
+                        query_received = True
                         query = Batch.from_args(query)
                         result = self.batch_processor.preprocess(
                             chromosomes=query.chromosomes,
@@ -71,10 +76,20 @@ class WorkerContext:
                         )
                         self.stream.synchronize()
                         self._put_output_queue(query, result)
-                        self.input_queue.task_done()
             except queue.Empty:
                 self.ready.set()
                 continue
+            except Exception as e:
+                # Log the error but keep the worker alive
+                logger.error(
+                    f"Worker {self.worker_id} encountered error processing batch: {e}"
+                )
+                # Worker continues to next batch
+                continue
+            finally:
+                # Always mark the task as done if we received a query
+                if query_received:
+                    self.input_queue.task_done()
             self._batch_count += 1
 
     def _wait_until_ready(self) -> bool:

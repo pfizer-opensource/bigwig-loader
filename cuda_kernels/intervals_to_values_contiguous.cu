@@ -31,12 +31,12 @@ void intervals_to_values_kernel(
         const int window_size,
         const float default_value,
         const bool default_value_isnan,
-        const float* scaling_factors,  // NEW: scaling factors array of length n_tracks
+        const float* scaling_factors,
+        const bool use_scaling_factors,
         T* out
 ) {
     int thread = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Same thread indexing as before
     int batch_index = thread % batch_size;
     int i = thread % (batch_size * n_tracks);
     int track_index = i / batch_size;
@@ -59,8 +59,7 @@ void intervals_to_values_kernel(
 
             float value = track_values[cursor];
 
-            // Apply scaling factor here
-            if (scaling_factors != nullptr) {
+            if (use_scaling_factors) {
                 value *= scaling_factors[track_index];
             }
 
@@ -104,8 +103,7 @@ void intervals_to_values_kernel(
                     final_value = summation / window_size;
                 }
 
-                // Apply scaling factor
-                if (scaling_factors != nullptr) {
+                if (use_scaling_factors) {
                     final_value *= scaling_factors[track_index];
                 }
 
@@ -135,8 +133,7 @@ void intervals_to_values_kernel(
                     final_value = summation / window_size;
                 }
 
-                // Apply scaling factor
-                if (scaling_factors != nullptr) {
+                if (use_scaling_factors) {
                     final_value *= scaling_factors[track_index];
                 }
 
@@ -156,8 +153,6 @@ void intervals_to_values_kernel(
     }
 }
 
-// Update wrapper functions to include scaling_factors
-
 extern "C" __global__
 void intervals_to_values_float32(
         const unsigned int* query_starts,
@@ -175,6 +170,7 @@ void intervals_to_values_float32(
         const float default_value,
         const bool default_value_isnan,
         const float* scaling_factors,
+        const bool use_scaling_factors,
         float* out
 ) {
     intervals_to_values_kernel<float>(
@@ -182,7 +178,7 @@ void intervals_to_values_float32(
         track_starts, track_ends, track_values,
         n_tracks, batch_size, sequence_length, max_number_intervals,
         window_size, default_value, default_value_isnan,
-        scaling_factors, out
+        scaling_factors, use_scaling_factors, out
     );
 }
 
@@ -203,6 +199,7 @@ void intervals_to_values_bfloat16(
         const float default_value,
         const bool default_value_isnan,
         const float* scaling_factors,
+        const bool use_scaling_factors,
         __nv_bfloat16* out
 ) {
     intervals_to_values_kernel<__nv_bfloat16>(
@@ -210,6 +207,6 @@ void intervals_to_values_bfloat16(
         track_starts, track_ends, track_values,
         n_tracks, batch_size, sequence_length, max_number_intervals,
         window_size, default_value, default_value_isnan,
-        scaling_factors, out
+        scaling_factors, use_scaling_factors, out
     );
 }
