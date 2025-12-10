@@ -1,4 +1,7 @@
 import logging
+import os
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -14,6 +17,7 @@ import pandas as pd
 
 from bigwig_loader.batch_processor import BatchProcessor
 from bigwig_loader.bigwig import BigWig
+from bigwig_loader.bigwig import prepare_index_for_bigwig
 from bigwig_loader.decompressor import Decoder
 from bigwig_loader.memory_bank import MemoryBank
 from bigwig_loader.merge_intervals import merge_interval_dataframe
@@ -21,6 +25,8 @@ from bigwig_loader.path import interpret_path
 from bigwig_loader.path import map_path_to_value
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import chromosome_sort
+
+logger = logging.getLogger(__name__)
 
 
 class BigWigCollection:
@@ -47,7 +53,7 @@ class BigWigCollection:
         bigwig_path: Union[str, Sequence[str], Path, Sequence[Path]],
         file_extensions: Sequence[str] = (".bigWig", ".bw"),
         crawl: bool = True,
-        scale: Optional[dict[Union[str | Path], Any]] = None,
+        scale: Optional[dict[Union[str, Path], Any]] = None,
         first_n_files: Optional[int] = None,
         pinned_memory_size: int = 10000,
     ):
@@ -81,11 +87,49 @@ class BigWigCollection:
         self.run_indexing()
         self._batch_processor = None
 
-    def run_indexing(self) -> None:
-        for bigwig in self.bigwigs:
-            bigwig.run_indexing(
-                chromosome_offsets=self.local_chrom_ids_to_offset_matrix[bigwig.id]
-            )
+    def run_indexing(self, max_workers: Optional[int] = None) -> None:
+        """
+        Run indexing for all bigwig files in parallel using multiple CPUs.
+        """
+        n_bigwigs = len(self.bigwigs)
+        if n_bigwigs == 0:
+            return
+
+        if n_bigwigs <= 4 or max_workers == 1:
+            for bigwig in self.bigwigs:
+                bigwig.run_indexing(
+                    chromosome_offsets=self.local_chrom_ids_to_offset_matrix[bigwig.id]
+                )
+            return
+
+        if max_workers is None:
+            max_workers = min(os.cpu_count() or 4, n_bigwigs)
+
+        verbose = True  # logger.isEnabledFor(logging.INFO)
+
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    prepare_index_for_bigwig,
+                    self.local_chrom_ids_to_offset_matrix[bigwig.id],
+                    bigwig.rtree_leaf_nodes,
+                ): bigwig
+                for bigwig in self.bigwigs
+            }
+
+            for i, future in enumerate(as_completed(futures), 1):
+                bigwig = futures[future]
+                sorted_data = future.result()
+                bigwig.chromosome_offsets = self.local_chrom_ids_to_offset_matrix[
+                    bigwig.id
+                ]
+                bigwig.finalize_indexing(sorted_data)
+
+                if verbose and (i % 100 == 0 or i == n_bigwigs):
+                    print(f"\rIndexed {i}/{n_bigwigs}", end="", flush=True)
+
+            if verbose:
+                print()
 
     def __len__(self) -> int:
         return len(self.bigwigs)
@@ -217,13 +261,11 @@ class BigWigCollection:
         Returns: pandas dataframe of intervals (chrom, start, end, value)
 
         """
-        logging.info("Collecting intervals from BigWig files.")
+        logger.info("Collecting intervals from BigWig files.")
         interval_for_all_bigwigs = []
         n_bigwigs = len(self.bigwigs)
         for i, bw in enumerate(self.bigwigs):
-            logging.info(
-                f"Getting intervals for BigWig file {i}/{n_bigwigs}: {bw.path}"
-            )
+            logger.info(f"Getting intervals for BigWig file {i}/{n_bigwigs}: {bw.path}")
             interval_for_all_bigwigs.append(
                 bw.intervals(
                     include_chromosomes=include_chromosomes,
@@ -244,14 +286,14 @@ class BigWigCollection:
             intervals["start"] = intervals["start"].values.clip(padding) - padding  # type: ignore
             intervals["end"] = intervals["end"].values + padding  # type: ignore
         if merge:
-            logging.info(
+            logger.info(
                 "Merging intervals from different BigWig Files into one interval list."
             )
             intervals = merge_interval_dataframe(
                 intervals, is_sorted=False, allow_gap=merge_allow_gap
             )
         if blacklist is not None:
-            logging.info("Subtracting blacklisted regions.")
+            logger.info("Subtracting blacklisted regions.")
             intervals = subtract_interval_dataframe(
                 intervals=intervals, blacklist=blacklist, buffer=blacklist_buffer
             )
@@ -375,7 +417,7 @@ class BigWigCollection:
             # exceeding this would be a problem as all the positions
             # in bigwig files are encoded in 32 bits. Making a global
             # base position that exceeds this number would be a problem.
-            logging.warning(
+            logger.warning(
                 "The sum of sizes of the chromosomes exceeds the size of uint32"
             )
         for bigwig in self.bigwigs:
