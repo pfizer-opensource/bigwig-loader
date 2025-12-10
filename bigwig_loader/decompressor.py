@@ -8,6 +8,9 @@ import numcodecs
 import numpy as np
 import numpy.typing as npt
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 codec = numcodecs.registry.get_codec(
     {
         "id": "nvcomp_batch",
@@ -51,7 +54,7 @@ class Decoder:
 
         num_chunks = int(num_chunks * generocity)
 
-        logging.debug(f"Reserving memory for {num_chunks} chunks")
+        logger.debug(f"Reserving memory for {num_chunks} chunks")
 
         self.uncomp_chunks = [
             cp.empty(self.max_uncompressed_chunk_size, dtype=cp.uint8)
