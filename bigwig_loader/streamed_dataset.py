@@ -14,6 +14,7 @@ from bigwig_loader.batch import IntervalType
 from bigwig_loader.batch_processor import BatchProcessor
 from bigwig_loader.batch_processor import PreprocessedReturnType
 from bigwig_loader.collection import BigWigCollection
+from bigwig_loader.decompressor import DecompressionError
 from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.intervals_to_values import intervals_to_values
 
@@ -78,6 +79,24 @@ class WorkerContext:
                         self._put_output_queue(query, result)
             except queue.Empty:
                 self.ready.set()
+                continue
+            except DecompressionError as e:
+                # Log warning with file paths for better diagnostics
+                if e.failed_bigwig_ids is None:
+                    logger.error(
+                        f"Decompression failed for some chunks. "
+                        f"Status codes: {set(e.status_codes.tolist()) if e.status_codes is not None else 'unknown'}"
+                    )
+
+                else:
+                    failed_paths = [
+                        str(self._collection.bigwigs[i].path)
+                        for i in e.failed_bigwig_ids
+                    ]
+                    logger.error(
+                        f"Decompression failed for {len(failed_paths)} file(s): {failed_paths}. "
+                        f"Status codes: {set(e.status_codes.tolist()) if e.status_codes is not None else 'unknown'}"
+                    )
                 continue
             except Exception as e:
                 # Log the error but keep the worker alive

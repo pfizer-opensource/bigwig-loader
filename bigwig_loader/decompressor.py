@@ -19,6 +19,20 @@ codec = numcodecs.registry.get_codec(
 )
 
 
+class DecompressionError(Exception):
+    """Raised when nvcomp decompression fails for one or more chunks."""
+
+    def __init__(
+        self,
+        message: str,
+        failed_bigwig_ids: Optional[np.ndarray] = None,
+        status_codes: Optional[np.ndarray] = None,
+    ):
+        super().__init__(message)
+        self.failed_bigwig_ids = failed_bigwig_ids
+        self.status_codes = status_codes
+
+
 class Decoder:
     # based on: `kvikio.nvcomp_codec.NvCompBatchCodec`
 
@@ -138,6 +152,27 @@ class Decoder:
         actual_uncomp_chunk_sizes = self.actual_uncomp_chunk_sizes[:num_chunks]
 
         statuses = self.statuses[:num_chunks]
+
+        failed_mask = statuses != 0
+        if failed_mask.any():
+            failed_statuses = statuses[failed_mask].get()
+            failed_bigwig_ids = (
+                bigwig_ids[failed_mask].get() if bigwig_ids is not None else None
+            )
+            unique_failed_bigwigs = (
+                np.unique(failed_bigwig_ids) if failed_bigwig_ids is not None else None
+            )
+
+            message = (
+                f"nvcomp decompression failed for {failed_mask.sum()} chunks. "
+                f"Status codes: {np.unique(failed_statuses).tolist()}"
+            )
+
+            raise DecompressionError(
+                message=message,
+                failed_bigwig_ids=unique_failed_bigwigs,
+                status_codes=failed_statuses,
+            )
 
         if stream is None:
             stream = codec._stream
