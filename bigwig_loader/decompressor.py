@@ -153,6 +153,21 @@ class Decoder:
 
         statuses = self.statuses[:num_chunks]
 
+        if stream is None:
+            stream = codec._stream
+
+        codec._algo.decompress(
+            comp_chunks,  # const void* const*
+            comp_chunk_sizes,  # const size_t*
+            num_chunks,  # ??
+            temp_buf,  #
+            uncomp_chunk_ptrs,
+            uncomp_chunk_sizes,
+            actual_uncomp_chunk_sizes,
+            statuses,
+            stream,
+        )
+
         failed_mask = statuses != 0
         if failed_mask.any():
             failed_statuses = statuses[failed_mask].get()
@@ -173,21 +188,6 @@ class Decoder:
                 failed_bigwig_ids=unique_failed_bigwigs,
                 status_codes=failed_statuses,
             )
-
-        if stream is None:
-            stream = codec._stream
-
-        codec._algo.decompress(
-            comp_chunks,  # const void* const*
-            comp_chunk_sizes,  # const size_t*
-            num_chunks,  # ??
-            temp_buf,  #
-            uncomp_chunk_ptrs,
-            uncomp_chunk_sizes,
-            actual_uncomp_chunk_sizes,
-            statuses,
-            stream,
-        )
 
         chrom_ids, start, end, value, n_rows_for_chunks = self.post_process(
             cp.concatenate(uncomp_chunks), bigwig_ids
