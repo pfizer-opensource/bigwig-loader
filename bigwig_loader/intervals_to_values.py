@@ -9,6 +9,9 @@ import cupy as cp
 from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.searchsorted import interval_searchsorted
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 CUDA_KERNEL_DIR = Path(__file__).parent.parent / "cuda_kernels"
 
 
@@ -160,6 +163,30 @@ def intervals_to_values(
             0, dtype=cp.float32
         )  # Empty array, won't be accessed
         use_scaling_factors = False
+
+    logger.debug("intervals_to_values inputs:")
+    logger.debug(
+        f"  array_start shape: {array_start.shape}, dtype: {array_start.dtype}"
+    )
+    logger.debug(f"  array_end shape: {array_end.shape}, dtype: {array_end.dtype}")
+    logger.debug(
+        f"  array_value shape: {array_value.shape}, dtype: {array_value.dtype}"
+    )
+    logger.debug(
+        f"  found_starts shape: {found_starts.shape}, min: {int(found_starts.min())}, max: {int(found_starts.max())}"
+    )
+    logger.debug(
+        f"  found_ends shape: {found_ends.shape}, min: {int(found_ends.min())}, max: {int(found_ends.max())}"
+    )
+    logger.debug(f"  out shape: {out.shape}")
+    logger.debug(
+        f"  array_start min/max: {int(array_start.min())}, {int(array_start.max())}"
+    )
+    logger.debug(f"  array_end min/max: {int(array_end.min())}, {int(array_end.max())}")
+    logger.debug(f"  max_number_intervals: {max_number_intervals}")
+    logger.debug(
+        f"  num_tracks: {num_tracks}, batch_size: {batch_size}, sequence_length: {sequence_length}"
+    )
 
     cuda_kernel(
         (grid_size,),

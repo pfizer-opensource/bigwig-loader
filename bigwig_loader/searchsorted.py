@@ -1,7 +1,11 @@
+import logging
 from typing import Literal
 
 import cupy as cp
 from cupy._sorting.search import _searchsorted_code
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
 
 _preamble = """
 template<typename T>
@@ -72,13 +76,31 @@ def searchsorted(
 
     n_subarrays = len(sizes)
     n_queries = len(queries)
+
     idx = cp.arange(n_subarrays, dtype=queries.dtype)[:, cp.newaxis]
     queries = queries[cp.newaxis, :]
     output = cp.zeros((n_subarrays, n_queries), dtype=cp.uint32)
 
-    result = _searchsorted_kernel(
-        queries, idx, start_indices, sizes, array, side == "right", True, output
-    )
+    try:
+        result = _searchsorted_kernel(
+            queries, idx, start_indices, sizes, array, side == "right", True, output
+        )
+    except Exception as e:
+        # Debug logging
+        logger.debug("searchsorted inputs:")
+        logger.debug(f"  array shape: {array.shape}, dtype: {array.dtype}")
+        logger.debug(f"  queries shape: {queries.shape}, dtype: {queries.dtype}")
+        logger.debug(f"  sizes shape: {sizes.shape}, sum: {int(sizes.sum())}")
+        logger.debug(
+            f"  start_indices shape: {start_indices.shape}, max: {int(start_indices.max())}"
+        )
+        logger.debug(f"  n_subarrays: {n_subarrays}, n_queries: {n_queries}")
+        if len(array) > 0:
+            logger.debug(
+                f"  array len: {len(array)}, start_indices max + sizes max: {int(start_indices.max()) + int(sizes.max())}"
+            )
+        raise e
+
     if absolute_indices:
         return result + start_indices[:, cp.newaxis]
     return result

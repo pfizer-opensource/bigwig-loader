@@ -19,6 +19,7 @@ from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.intervals_to_values import intervals_to_values
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 InputBatchType = Batch | IntervalType
 
@@ -58,6 +59,7 @@ class WorkerContext:
     def _worker(self) -> None:
         while self._wait_until_ready():
             query_received = False
+            output_produced = False
             try:
                 # necessary because some other thread
                 # (for instance pytorch-lightning)
@@ -77,9 +79,9 @@ class WorkerContext:
                         )
                         self.stream.synchronize()
                         self._put_output_queue(query, result)
+                        output_produced = True
             except queue.Empty:
-                self.ready.set()
-                continue
+                logger.debug(f"Queue Empty, batch_count: {self._batch_count}")
             except DecompressionError as e:
                 # Log warning with file paths for better diagnostics
                 if e.failed_bigwig_ids is None:
@@ -97,19 +99,24 @@ class WorkerContext:
                         f"Decompression failed for {len(failed_paths)} file(s): {failed_paths}. "
                         f"Status codes: {set(e.status_codes.tolist()) if e.status_codes is not None else 'unknown'}"
                     )
-                continue
             except Exception as e:
-                # Log the error but keep the worker alive
+                # Log the error with full traceback
+                import traceback  # Add this import
+
                 logger.error(
-                    f"Worker {self.worker_id} encountered error processing batch: {e}"
+                    f"Worker {self.worker_id} encountered error processing batch: {e}\n"
+                    f"Traceback:\n{traceback.format_exc()}"
                 )
                 # Worker continues to next batch
-                continue
             finally:
                 # Always mark the task as done if we received a query
                 if query_received:
                     self.input_queue.task_done()
-            self._batch_count += 1
+            if not output_produced:
+                self.ready.set()
+
+            if output_produced:
+                self._batch_count += 1
 
     def _wait_until_ready(self) -> bool:
         while True:
