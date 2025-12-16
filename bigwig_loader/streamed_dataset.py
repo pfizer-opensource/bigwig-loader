@@ -251,8 +251,7 @@ class StreamedDataloader:
 
                 for select in self._slices_objects(n_samples, slice_size):
                     with self.main_stream as stream:
-                        # stream.synchronize()
-                        cp.cuda.Device().synchronize()
+                        stream.synchronize()
 
                         values = intervals_to_values(
                             array_start=start_data,
