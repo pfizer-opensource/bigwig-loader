@@ -1,5 +1,7 @@
+import logging
 import queue
 import threading
+import traceback
 from types import TracebackType
 from typing import Generator
 from typing import Iterable
@@ -13,8 +15,11 @@ from bigwig_loader.batch import IntervalType
 from bigwig_loader.batch_processor import BatchProcessor
 from bigwig_loader.batch_processor import PreprocessedReturnType
 from bigwig_loader.collection import BigWigCollection
+from bigwig_loader.decompressor import DecompressionError
 from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.intervals_to_values import intervals_to_values
+
+logger = logging.getLogger(__name__)
 
 InputBatchType = Batch | IntervalType
 
@@ -53,6 +58,8 @@ class WorkerContext:
 
     def _worker(self) -> None:
         while self._wait_until_ready():
+            query_received = False
+            output_produced = False
             try:
                 # necessary because some other thread
                 # (for instance pytorch-lightning)
@@ -61,6 +68,7 @@ class WorkerContext:
                 with cp.cuda.Device(self.stream.device_id):
                     with self.stream as stream:
                         query = self.input_queue.get(timeout=1)
+                        query_received = True
                         query = Batch.from_args(query)
                         result = self.batch_processor.preprocess(
                             chromosomes=query.chromosomes,
@@ -71,18 +79,43 @@ class WorkerContext:
                         )
                         self.stream.synchronize()
                         self._put_output_queue(query, result)
-                        self.input_queue.task_done()
+                        output_produced = True
             except queue.Empty:
+                logger.debug(f"Queue Empty, batch_count: {self._batch_count}")
+            except DecompressionError as e:
+                if e.failed_bigwig_ids is None:
+                    logger.error(
+                        f"Decompression failed for some chunks. "
+                        f"Status codes: {set(e.status_codes.tolist()) if e.status_codes is not None else 'unknown'}"
+                    )
+
+                else:
+                    failed_paths = [
+                        str(self._collection.bigwigs[i].path)
+                        for i in e.failed_bigwig_ids
+                    ]
+                    logger.error(
+                        f"Decompression failed for {len(failed_paths)} file(s): {failed_paths}. "
+                        f"Status codes: {set(e.status_codes.tolist()) if e.status_codes is not None else 'unknown'}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Worker {self.worker_id} encountered error processing batch: {e}\n"
+                    f"Traceback:\n{traceback.format_exc()}"
+                )
+            finally:
+                if query_received:
+                    self.input_queue.task_done()
+            if not output_produced:
                 self.ready.set()
-                continue
-            self._batch_count += 1
+
+            if output_produced:
+                self._batch_count += 1
 
     def _wait_until_ready(self) -> bool:
         while True:
             if self.stop_event.is_set():
                 return False
-            # returns True when ready event is set
-            # and false when the timeout is reached
             if self.ready.wait(timeout=1):
                 self.ready.clear()
                 return True

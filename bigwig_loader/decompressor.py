@@ -8,12 +8,29 @@ import numcodecs
 import numpy as np
 import numpy.typing as npt
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 codec = numcodecs.registry.get_codec(
     {
         "id": "nvcomp_batch",
         "algorithm": "Deflate",
     }
 )
+
+
+class DecompressionError(Exception):
+    """Raised when nvcomp decompression fails for one or more chunks."""
+
+    def __init__(
+        self,
+        message: str,
+        failed_bigwig_ids: Optional[np.ndarray] = None,
+        status_codes: Optional[np.ndarray] = None,
+    ):
+        super().__init__(message)
+        self.failed_bigwig_ids = failed_bigwig_ids
+        self.status_codes = status_codes
 
 
 class Decoder:
@@ -51,7 +68,7 @@ class Decoder:
 
         num_chunks = int(num_chunks * generocity)
 
-        logging.debug(f"Reserving memory for {num_chunks} chunks")
+        logger.debug(f"Reserving memory for {num_chunks} chunks")
 
         self.uncomp_chunks = [
             cp.empty(self.max_uncompressed_chunk_size, dtype=cp.uint8)
@@ -150,6 +167,27 @@ class Decoder:
             statuses,
             stream,
         )
+
+        failed_mask = statuses != 0
+        if failed_mask.any():
+            failed_statuses = statuses[failed_mask].get()
+            failed_bigwig_ids = (
+                bigwig_ids[failed_mask].get() if bigwig_ids is not None else None
+            )
+            unique_failed_bigwigs = (
+                np.unique(failed_bigwig_ids) if failed_bigwig_ids is not None else None
+            )
+
+            message = (
+                f"nvcomp decompression failed for {failed_mask.sum()} chunks. "
+                f"Status codes: {np.unique(failed_statuses).tolist()}"
+            )
+
+            raise DecompressionError(
+                message=message,
+                failed_bigwig_ids=unique_failed_bigwigs,
+                status_codes=failed_statuses,
+            )
 
         chrom_ids, start, end, value, n_rows_for_chunks = self.post_process(
             cp.concatenate(uncomp_chunks), bigwig_ids

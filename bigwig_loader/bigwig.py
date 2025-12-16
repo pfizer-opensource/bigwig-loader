@@ -1,7 +1,5 @@
-import zlib
+import logging
 from pathlib import Path
-from random import sample
-from typing import BinaryIO
 from typing import Iterable
 from typing import Literal
 from typing import Optional
@@ -22,12 +20,14 @@ from bigwig_loader.parser import ChromosomeTreeHeader
 from bigwig_loader.parser import ChromosomeTreeNode
 from bigwig_loader.parser import RTreeIndexHeader
 from bigwig_loader.parser import TotalSummary
-from bigwig_loader.parser import WIGSectionHeader
 from bigwig_loader.parser import ZoomHeader
 from bigwig_loader.parser import collect_leaf_nodes
 from bigwig_loader.store import BigWigStore
 from bigwig_loader.subtract_intervals import subtract_interval_dataframe
 from bigwig_loader.util import get_standard_chromosomes
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class BigWig:
@@ -50,6 +50,24 @@ class BigWig:
             self.id = id
             self.scale = scale
             self.bbi_header = BBIHeader.from_file(bigwig)
+
+            # Endianness check using BBI header magic
+            # UCSC BigWig spec: magic is 0x888FFC26
+            # Parser uses little-endian unpacking, so valid BigWig files will read as 0x888FFC26
+            # (the bytes in file are 26 FC 8F 88, which when read little-endian gives 0x888FFC26)
+            magic = self.bbi_header.magic
+            if magic == 0x888FFC26:
+                logger.debug(f"BBI header magic: {magic:#x} (valid BigWig file)")
+            elif magic == 0x26FC8F88:
+                # This would mean the file has bytes 88 8F FC 26, which is byte-swapped
+                logger.warning(
+                    f"BBI header magic: {magic:#x} (byte-swapped BigWig - may need big-endian parsing)"
+                )
+            else:
+                logger.warning(
+                    f"BBI header magic: {magic:#x} (unexpected value - not a valid BigWig file?)"
+                )
+
             self.zoom_headers = ZoomHeader.all(
                 bigwig, first_offset=64, n_zoom_levels=self.bbi_header.zoom_levels
             )
@@ -73,7 +91,7 @@ class BigWig:
             )
 
             self.rtree_leaf_nodes = collect_leaf_nodes(file_object=bigwig, offset=None)
-            self.max_rows_per_chunk = self._guess_max_rows_per_chunk(bigwig)
+            self.max_rows_per_chunk = self.get_max_rows_per_chunk()
 
         self.chrom_to_chrom_id: dict[str, int] = {
             item.key: item.chrom_id for item in self.chromosome_head_node.items  # type: ignore
@@ -90,13 +108,28 @@ class BigWig:
         an index itself as well. But we prefer to recalculate
         an index here.
         """
-
         self.chromosome_offsets = chromosome_offsets
-        self.ncls_index, self.reference_data = self.build_ncls_index()
+        sorted_data = prepare_index_for_bigwig(
+            chromosome_offsets=chromosome_offsets,
+            rtree_leaf_nodes=self.rtree_leaf_nodes,
+        )
+        self.finalize_indexing(sorted_data)
+
+    def finalize_indexing(self, sorted_data: npt.NDArray[np.void]) -> None:
+        """
+        Finalize indexing by building NCLS from prepared data.
+        This should be called in the main thread/process.
+        """
+        self.reference_data = sorted_data
+        self.ncls_index = NCLS(
+            sorted_data["start_abs"],
+            sorted_data["end_abs"],
+            np.arange(len(sorted_data)),
+        )
         self.store = BigWigStore(
             self.path,
-            chunk_sizes=self.reference_data["data_size"],  # type: ignore
-            chunk_offsets=self.reference_data["data_offset"],  # type: ignore
+            chunk_sizes=sorted_data["data_size"],
+            chunk_offsets=sorted_data["data_offset"],
         )
 
     def chromosomes(
@@ -275,44 +308,6 @@ class BigWig:
         )
         return self.store.get_offsets_and_sizes(np.sort(np.unique(right_index)))
 
-    def build_ncls_index(self) -> tuple[NCLS, npt.NDArray[np.void]]:
-        dtype = np.dtype(
-            [
-                ("start_chrom_ix", "u4"),
-                ("start_base", "u4"),
-                ("end_chrom_ix", "u4"),
-                ("end_base", "u4"),
-                ("data_offset", "u8"),
-                ("data_size", "u8"),
-                ("start_abs", "i8"),
-                ("end_abs", "i8"),
-            ]
-        )
-
-        data = np.empty(self.rtree_leaf_nodes.shape, dtype=dtype)
-        data["start_chrom_ix"] = self.rtree_leaf_nodes["start_chrom_ix"]  # type: ignore
-        data["start_base"] = self.rtree_leaf_nodes["start_base"]  # type: ignore
-        data["end_chrom_ix"] = self.rtree_leaf_nodes["end_chrom_ix"]  # type: ignore
-        data["end_base"] = self.rtree_leaf_nodes["end_base"]  # type: ignore
-        data["data_offset"] = self.rtree_leaf_nodes["data_offset"]  # type: ignore
-        data["data_size"] = self.rtree_leaf_nodes["data_size"]  # type: ignore
-        data["start_abs"] = self.make_positions_global(
-            self.rtree_leaf_nodes["start_chrom_ix"], self.rtree_leaf_nodes["start_base"]  # type: ignore
-        ).astype(np.int64)
-        data["end_abs"] = self.make_positions_global(
-            self.rtree_leaf_nodes["end_chrom_ix"], self.rtree_leaf_nodes["end_base"]  # type: ignore
-        ).astype(np.int64)
-
-        sort_indices = np.argsort(data["start_abs"])
-        sorted_data = data[sort_indices]
-
-        ncls = NCLS(
-            sorted_data["start_abs"],
-            sorted_data["end_abs"],
-            np.arange(len(sorted_data)),
-        )
-        return ncls, sorted_data
-
     def search_ncls(
         self, query_df: pd.DataFrame, use_key: bool = False
     ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64]]:
@@ -404,33 +399,75 @@ class BigWig:
             mapping[chrom_id] = key
         return mapping  # type: ignore
 
-    def _guess_max_rows_per_chunk(
-        self, file_object: BinaryIO, sample_size: int = 100
-    ) -> int:
+    def get_max_rows_per_chunk(self) -> int:
         """
-        Randomly samples some chunks and looks in the header
-        to see if in these chunks, the number of rows in the
-        decompressed data is always the same. This helps with
-        the ReferenceFileSystem.
+        Determines the maximum number of rows in any chunk.
+
+        Uses the BBI header's uncompress_buff_size as the authoritative source,
+        since this is the buffer size the file was created with and guarantees
+        all chunks can be decompressed into this space.
 
         Args:
             file_object: BigWig file opened as bytes.
+            sample_size: Number of chunks to sample for verification.
         Returns:
-            Number of rows in a chunk
+            Maximum number of rows that could fit in the uncompressed buffer.
         """
+        # The BBI header's uncompress_buff_size is the authoritative value
+        # It defines the maximum uncompressed size for any chunk in the file
+        # Each row is 12 bytes, plus 24-byte header
+        return (self.bbi_header.uncompress_buff_size - 24) // 12
 
-        rows_for_chunks = []
 
-        data_offsets = self.rtree_leaf_nodes["data_offset"]
-        data_sizes = self.rtree_leaf_nodes["data_size"]
-        if len(data_offsets) > sample_size:
-            sample_indices = sample(range(len(data_offsets)), sample_size)  # nosec
-            data_offsets = data_offsets[sample_indices]
-            data_sizes = data_sizes[sample_indices]
+def prepare_index_for_bigwig(
+    chromosome_offsets: npt.NDArray[np.int64],
+    rtree_leaf_nodes: npt.NDArray[np.void],
+) -> npt.NDArray[np.generic]:
+    """
+    Standalone function for preparing index data in a separate process.
+    This can be pickled and run with ProcessPoolExecutor.
 
-        for data_offset, data_size in zip(data_offsets, data_sizes):
-            file_object.seek(data_offset, 0)  # type: ignore
-            decoded = zlib.decompress(file_object.read(data_size))  # type: ignore
-            header = WIGSectionHeader.from_bytes(decoded[:24])
-            rows_for_chunks.append(header.item_count)
-        return max(rows_for_chunks)
+    Args:
+        path: Path to bigwig file (for identification)
+        bigwig_id: ID of the bigwig file
+        chromosome_offsets: Offsets for converting local to global positions
+        rtree_leaf_nodes: The rtree leaf nodes from the bigwig file
+
+    Returns:
+        sorted data
+    """
+    dtype = np.dtype(
+        [
+            ("start_chrom_ix", "u4"),
+            ("start_base", "u4"),
+            ("end_chrom_ix", "u4"),
+            ("end_base", "u4"),
+            ("data_offset", "u8"),
+            ("data_size", "u8"),
+            ("start_abs", "i8"),
+            ("end_abs", "i8"),
+        ]
+    )
+
+    data = np.empty(rtree_leaf_nodes.shape, dtype=dtype)
+    data["start_chrom_ix"] = rtree_leaf_nodes["start_chrom_ix"]
+    data["start_base"] = rtree_leaf_nodes["start_base"]
+    data["end_chrom_ix"] = rtree_leaf_nodes["end_chrom_ix"]
+    data["end_base"] = rtree_leaf_nodes["end_base"]
+    data["data_offset"] = rtree_leaf_nodes["data_offset"]
+    data["data_size"] = rtree_leaf_nodes["data_size"]
+
+    # make_positions_global inline
+    data["start_abs"] = (
+        rtree_leaf_nodes["start_base"]
+        + chromosome_offsets[rtree_leaf_nodes["start_chrom_ix"]]
+    ).astype(np.int64)
+    data["end_abs"] = (
+        rtree_leaf_nodes["end_base"]
+        + chromosome_offsets[rtree_leaf_nodes["end_chrom_ix"]]
+    ).astype(np.int64)
+
+    sort_indices = np.argsort(data["start_abs"])
+    sorted_data = data[sort_indices]
+
+    return sorted_data

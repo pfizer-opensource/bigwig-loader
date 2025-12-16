@@ -5,6 +5,8 @@ import cupy as cp
 from kvikio.cufile import CuFile
 from kvikio.cufile import IOFuture
 
+logger = logging.getLogger(__name__)
+
 
 class MemoryBank:
     def __init__(self, nbytes: int = 10000, elastic: bool = True):
@@ -58,7 +60,7 @@ class MemoryBank:
         if new_size > self._gpu_byte_array.size:
             self.await_all_promises()
             new_size = int(new_size * generosity)
-            logging.debug(
+            logger.debug(
                 f"CuFileMemoryBank: Increasing size of cupy byte from {self._gpu_byte_array.size} to {new_size}"
             )
             new_mem = cp.empty(new_size, dtype=cp.uint8)
@@ -117,9 +119,6 @@ class MemoryBank:
             offsets: byte offsets to starts of compressed chunks
             sizes: sizes of compressed chunks
             skip_bytes: skips this number of bytes from offset
-            increase_memory_size: whether to elastically increase the
-                size of the pinned memory if the new chunks don't
-                fit in anymore. (default: True)
 
         """
         new_size = self.compressed_chunk_offsets[-1] + sum(sizes)

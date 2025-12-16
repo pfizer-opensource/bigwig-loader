@@ -9,6 +9,8 @@ import cupy as cp
 from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.searchsorted import interval_searchsorted
 
+logger = logging.getLogger(__name__)
+
 CUDA_KERNEL_DIR = Path(__file__).parent.parent / "cuda_kernels"
 
 
@@ -153,9 +155,13 @@ def intervals_to_values(
 
     # Handle scaling factors - convert to float32 if provided
     if scaling_factors is not None:
-        scaling_factors = cp.ascontiguousarray(scaling_factors, dtype=cp.float32)
+        scaling_factors_arr = cp.ascontiguousarray(scaling_factors, dtype=cp.float32)
+        use_scaling_factors = True
     else:
-        scaling_factors = cp.asarray([], dtype=cp.float32)
+        scaling_factors_arr = cp.empty(
+            0, dtype=cp.float32
+        )  # Empty array, won't be accessed
+        use_scaling_factors = False
 
     cuda_kernel(
         (grid_size,),
@@ -170,16 +176,18 @@ def intervals_to_values(
             array_value,
             num_tracks,
             batch_size,
-            sequence_length,  # should really sequence length, not reduced sequence length
+            sequence_length,
             max_number_intervals,
             window_size,
             cp.float32(default_value),
             default_value_isnan,
-            scaling_factors,
+            scaling_factors_arr,
+            use_scaling_factors,
             out,
         ),
         dtype=dtype,
     )
+
     return out
 
 

@@ -100,6 +100,11 @@ def load_and_decode(
         local_to_global=local_to_global,
     )
 
+    if stream is not None:
+        stream.synchronize()
+    else:
+        cp.cuda.Device().synchronize()
+
     start_data, end_data, value_data, bigwig_start_indices = decoder.decode_batch(
         bigwig_ids=bigwig_ids,
         comp_chunk_pointers=comp_chunk_pointers,
