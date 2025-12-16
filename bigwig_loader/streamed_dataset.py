@@ -241,6 +241,12 @@ class StreamedDataloader:
                 n_samples = len(abs_start)
                 slice_size = self._determine_slice_size(n_samples=n_samples)
 
+                logger.debug("******")
+                logger.debug(batch.chromosomes)
+                logger.debug(batch.track_names)
+                logger.debug(batch.starts)
+                logger.debug(batch.ends)
+
                 out = self._get_out_tensor(
                     batch_size=slice_size,
                     sequence_length=(abs_end[0] - abs_start[0]).item()
@@ -259,7 +265,8 @@ class StreamedDataloader:
 
                 for select in self._slices_objects(n_samples, slice_size):
                     with self.main_stream as stream:
-                        stream.synchronize()
+                        # stream.synchronize()
+                        cp.cuda.Device().synchronize()
 
                         values = intervals_to_values(
                             array_start=start_data,

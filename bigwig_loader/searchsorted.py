@@ -4,7 +4,7 @@ from typing import Literal
 import cupy as cp
 from cupy._sorting.search import _searchsorted_code
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 _preamble = """
@@ -69,7 +69,7 @@ def searchsorted(
         absolute_indices: whether to give the indices with respect to the entire
             array (True) or for the subarrays (False).
     Returns:
-        And array of size n_subarrays x n_queries with insertion indices.
+        An array of size n_subarrays x n_queries with insertion indices.
 
     """
     start_indices, sizes = starts_and_sizes(start_indices, sizes)
@@ -77,32 +77,55 @@ def searchsorted(
     n_subarrays = len(sizes)
     n_queries = len(queries)
 
+    # ========== Edge case: all subarrays are empty ==========
+    # If the array is empty, just return zeros
+    if len(array) == 0:
+        return cp.zeros((n_subarrays, n_queries), dtype=cp.uint32)
+
+    # ========== FIX: Handle empty subarrays ==========
+    # The kernel has undefined behavior when n_bins=0 (accesses bins[-1])
+    # We mask empty subarrays, run the kernel with safe values, then fix results
+    empty_mask = sizes == 0
+    has_empty = bool(empty_mask.any())
+
+    if has_empty:
+        n_empty = int(empty_mask.sum())
+        logger.debug(f"searchsorted: {n_empty} empty subarrays detected, applying fix")
+
+        # Create copies to avoid modifying originals
+        sizes = sizes.copy()
+        start_indices = start_indices.copy()
+
+        # Set empty subarrays to size=1 pointing to index 0
+        # This prevents the kernel from accessing bins[-1] (undefined behavior)
+        sizes[empty_mask] = 1
+        start_indices[empty_mask] = 0
+
     idx = cp.arange(n_subarrays, dtype=queries.dtype)[:, cp.newaxis]
-    queries = queries[cp.newaxis, :]
+    queries_broadcast = queries[cp.newaxis, :]
     output = cp.zeros((n_subarrays, n_queries), dtype=cp.uint32)
 
-    try:
-        result = _searchsorted_kernel(
-            queries, idx, start_indices, sizes, array, side == "right", True, output
-        )
-    except Exception as e:
-        # Debug logging
-        logger.debug("searchsorted inputs:")
-        logger.debug(f"  array shape: {array.shape}, dtype: {array.dtype}")
-        logger.debug(f"  queries shape: {queries.shape}, dtype: {queries.dtype}")
-        logger.debug(f"  sizes shape: {sizes.shape}, sum: {int(sizes.sum())}")
-        logger.debug(
-            f"  start_indices shape: {start_indices.shape}, max: {int(start_indices.max())}"
-        )
-        logger.debug(f"  n_subarrays: {n_subarrays}, n_queries: {n_queries}")
-        if len(array) > 0:
-            logger.debug(
-                f"  array len: {len(array)}, start_indices max + sizes max: {int(start_indices.max()) + int(sizes.max())}"
-            )
-        raise e
+    result = _searchsorted_kernel(
+        queries_broadcast,
+        idx,
+        start_indices,
+        sizes,
+        array,
+        side == "right",
+        True,
+        output,
+    )
 
     if absolute_indices:
-        return result + start_indices[:, cp.newaxis]
+        result = result + start_indices[:, cp.newaxis]
+
+    # ========== FIX: Reset results for empty subarrays ==========
+    # For empty subarrays, set result to 0
+    # This ensures found_starts == found_ends == 0 for empty tracks,
+    # so the interval processing loop does nothing (no intervals to process)
+    if has_empty:
+        result[empty_mask, :] = 0
+
     return result
 
 
@@ -118,7 +141,6 @@ def interval_searchsorted(
     """This is a convenience function that does searchsorted on both
     the start and end arrays and returns the results.
     """
-
     start_indices, sizes = starts_and_sizes(start_indices, sizes)
 
     # n_tracks x n_queries
@@ -129,6 +151,7 @@ def interval_searchsorted(
         side="right",
         absolute_indices=absolute_indices,
     )
+
     found_ends = searchsorted(
         array_start,
         queries=query_ends,
