@@ -5,7 +5,6 @@ import cupy as cp
 from cupy._sorting.search import _searchsorted_code
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 _preamble = """
 template<typename T>
@@ -77,12 +76,10 @@ def searchsorted(
     n_subarrays = len(sizes)
     n_queries = len(queries)
 
-    # ========== Edge case: all subarrays are empty ==========
     # If the array is empty, just return zeros
     if len(array) == 0:
         return cp.zeros((n_subarrays, n_queries), dtype=cp.uint32)
 
-    # ========== FIX: Handle empty subarrays ==========
     # The kernel has undefined behavior when n_bins=0 (accesses bins[-1])
     # We mask empty subarrays, run the kernel with safe values, then fix results
     empty_mask = sizes == 0
@@ -91,15 +88,9 @@ def searchsorted(
     if has_empty:
         n_empty = int(empty_mask.sum())
         logger.debug(f"searchsorted: {n_empty} empty subarrays detected, applying fix")
-
-        # Create copies to avoid modifying originals
-        sizes = sizes.copy()
-        start_indices = start_indices.copy()
-
         # Set empty subarrays to size=1 pointing to index 0
         # This prevents the kernel from accessing bins[-1] (undefined behavior)
         sizes[empty_mask] = 1
-        start_indices[empty_mask] = 0
 
     idx = cp.arange(n_subarrays, dtype=queries.dtype)[:, cp.newaxis]
     queries_broadcast = queries[cp.newaxis, :]
@@ -119,7 +110,6 @@ def searchsorted(
     if absolute_indices:
         result = result + start_indices[:, cp.newaxis]
 
-    # ========== FIX: Reset results for empty subarrays ==========
     # For empty subarrays, set result to 0
     # This ensures found_starts == found_ends == 0 for empty tracks,
     # so the interval processing loop does nothing (no intervals to process)

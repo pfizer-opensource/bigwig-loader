@@ -1,6 +1,7 @@
 import logging
 import queue
 import threading
+import traceback
 from types import TracebackType
 from typing import Generator
 from typing import Iterable
@@ -19,7 +20,6 @@ from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.intervals_to_values import intervals_to_values
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 InputBatchType = Batch | IntervalType
 
@@ -83,7 +83,6 @@ class WorkerContext:
             except queue.Empty:
                 logger.debug(f"Queue Empty, batch_count: {self._batch_count}")
             except DecompressionError as e:
-                # Log warning with file paths for better diagnostics
                 if e.failed_bigwig_ids is None:
                     logger.error(
                         f"Decompression failed for some chunks. "
@@ -100,16 +99,11 @@ class WorkerContext:
                         f"Status codes: {set(e.status_codes.tolist()) if e.status_codes is not None else 'unknown'}"
                     )
             except Exception as e:
-                # Log the error with full traceback
-                import traceback  # Add this import
-
                 logger.error(
                     f"Worker {self.worker_id} encountered error processing batch: {e}\n"
                     f"Traceback:\n{traceback.format_exc()}"
                 )
-                # Worker continues to next batch
             finally:
-                # Always mark the task as done if we received a query
                 if query_received:
                     self.input_queue.task_done()
             if not output_produced:
@@ -122,8 +116,6 @@ class WorkerContext:
         while True:
             if self.stop_event.is_set():
                 return False
-            # returns True when ready event is set
-            # and false when the timeout is reached
             if self.ready.wait(timeout=1):
                 self.ready.clear()
                 return True
@@ -240,12 +232,6 @@ class StreamedDataloader:
 
                 n_samples = len(abs_start)
                 slice_size = self._determine_slice_size(n_samples=n_samples)
-
-                logger.debug("******")
-                logger.debug(batch.chromosomes)
-                logger.debug(batch.track_names)
-                logger.debug(batch.starts)
-                logger.debug(batch.ends)
 
                 out = self._get_out_tensor(
                     batch_size=slice_size,

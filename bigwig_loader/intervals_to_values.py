@@ -1,6 +1,5 @@
 import logging
 import math
-from datetime import datetime
 from math import isnan
 from pathlib import Path
 from typing import Literal
@@ -11,54 +10,8 @@ from bigwig_loader.default_value import replace_out_tensor_if_needed
 from bigwig_loader.searchsorted import interval_searchsorted
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 CUDA_KERNEL_DIR = Path(__file__).parent.parent / "cuda_kernels"
-
-DEBUG_DUMP_DIR = Path("./bigwig_loader_debug")
-
-
-def save_debug_tensors(
-    prefix: str,
-    array_start: cp.ndarray,
-    array_end: cp.ndarray,
-    array_value: cp.ndarray,
-    query_starts: cp.ndarray,
-    query_ends: cp.ndarray,
-    found_starts: cp.ndarray,
-    found_ends: cp.ndarray,
-    out: cp.ndarray,
-    scaling_factors: cp.ndarray | None,
-    metadata: dict[str, str | int],
-) -> Path:
-    """Save tensors to disk for debugging."""
-    import numpy as np
-
-    DEBUG_DUMP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    dump_dir = DEBUG_DUMP_DIR / f"{prefix}_{timestamp}"
-    dump_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save arrays as numpy files (move to CPU first)
-    np.save(dump_dir / "array_start.npy", array_start.get())
-    np.save(dump_dir / "array_end.npy", array_end.get())
-    np.save(dump_dir / "array_value.npy", array_value.get())
-    np.save(dump_dir / "query_starts.npy", query_starts.get())
-    np.save(dump_dir / "query_ends.npy", query_ends.get())
-    np.save(dump_dir / "found_starts.npy", found_starts.get())
-    np.save(dump_dir / "found_ends.npy", found_ends.get())
-    np.save(dump_dir / "out.npy", out.get())
-    if scaling_factors is not None:
-        np.save(dump_dir / "scaling_factors.npy", scaling_factors.get())
-
-    # Save metadata
-    import json
-
-    with open(dump_dir / "metadata.json", "w") as f:
-        json.dump(metadata, f, indent=2)
-
-    logger.info(f"Saved debug tensors to {dump_dir}")
-    return dump_dir
 
 
 class Kernel:
@@ -166,10 +119,6 @@ def intervals_to_values(
     batch_size = len(query_starts)
     num_tracks = found_starts.shape[0]
 
-    logger.debug("--------------------------")
-    if out is not None:
-        logger.debug(f"Out tensor before replace: {out.shape}, dtype: {out.dtype}")
-
     out = replace_out_tensor_if_needed(
         out,
         batch_size=batch_size,
@@ -179,8 +128,6 @@ def intervals_to_values(
         dtype=dtype,
         reset_values=True,
     )
-
-    logger.debug(f"Out tensor after replace: {out.shape}, dtype: {out.dtype}")
 
     max_number_intervals = min(
         sequence_length, (found_ends - found_starts).max().item()
@@ -216,115 +163,31 @@ def intervals_to_values(
         )  # Empty array, won't be accessed
         use_scaling_factors = False
 
-    logger.debug("intervals_to_values inputs:")
-    logger.debug(
-        f"  array_start shape: {array_start.shape}, dtype: {array_start.dtype}"
-    )
-    logger.debug(f"  array_end shape: {array_end.shape}, dtype: {array_end.dtype}")
-    logger.debug(
-        f"  array_value shape: {array_value.shape}, dtype: {array_value.dtype}"
-    )
-    logger.debug(
-        f"  found_starts shape: {found_starts.shape}, min: {int(found_starts.min())}, max: {int(found_starts.max())}"
-    )
-    logger.debug(
-        f"  found_ends shape: {found_ends.shape}, min: {int(found_ends.min())}, max: {int(found_ends.max())}"
-    )
-    logger.debug(f"  out shape: {out.shape}")
-    logger.debug(
-        f"  array_start min/max: {int(array_start.min())}, {int(array_start.max())}"
-    )
-    logger.debug(f"  array_end min/max: {int(array_end.min())}, {int(array_end.max())}")
-    logger.debug(f"  max_number_intervals: {max_number_intervals}")
-    logger.debug(
-        f"  num_tracks: {num_tracks}, batch_size: {batch_size}, sequence_length: {sequence_length}"
+    cuda_kernel(
+        (grid_size,),
+        (block_size,),
+        (
+            query_starts,
+            query_ends,
+            found_starts,
+            found_ends,
+            array_start,
+            array_end,
+            array_value,
+            num_tracks,
+            batch_size,
+            sequence_length,
+            max_number_intervals,
+            window_size,
+            cp.float32(default_value),
+            default_value_isnan,
+            scaling_factors_arr,
+            use_scaling_factors,
+            out,
+        ),
+        dtype=dtype,
     )
 
-    # ========== DEBUG: Additional validation ==========
-    # Check for cases where found_starts > found_ends (invalid ranges)
-    invalid_mask = found_starts > found_ends
-    n_invalid = int(invalid_mask.sum())
-    if n_invalid > 0:
-        logger.warning(f"  {n_invalid} tracks have found_starts > found_ends")
-        invalid_indices = cp.where(invalid_mask.any(axis=1))[0]
-        logger.warning(
-            f"  Invalid track indices (first 10): {invalid_indices[:10].get()}"
-        )
-        for idx in invalid_indices[:5].get():
-            logger.warning(
-                f"    track {idx}: found_start={int(found_starts[idx, 0])}, found_end={int(found_ends[idx, 0])}"
-            )
-
-    # Check query range vs data range
-    logger.debug(f"  query_starts: {query_starts.get()}")
-    logger.debug(f"  query_ends: {query_ends.get()}")
-
-    # Check if any intervals are negative length
-    interval_lengths = found_ends.astype(cp.int64) - found_starts.astype(cp.int64)
-    if int(interval_lengths.min()) < 0:
-        logger.warning(
-            f"  Negative interval lengths detected! min: {int(interval_lengths.min())}"
-        )
-
-    # Check grid/block calculation
-    logger.debug(f"  grid_size: {grid_size}, block_size: {block_size}")
-    logger.debug(f"  n_threads_needed: {n_threads_needed}")
-
-    try:
-        cuda_kernel(
-            (grid_size,),
-            (block_size,),
-            (
-                query_starts,
-                query_ends,
-                found_starts,
-                found_ends,
-                array_start,
-                array_end,
-                array_value,
-                num_tracks,
-                batch_size,
-                sequence_length,
-                max_number_intervals,
-                window_size,
-                cp.float32(default_value),
-                default_value_isnan,
-                scaling_factors_arr,
-                use_scaling_factors,
-                out,
-            ),
-            dtype=dtype,
-        )
-    except Exception as e:
-        logger.error(f"CUDA kernel failed: {e}")
-        try:
-            # Try to save tensors - might fail if CUDA context is corrupted
-            save_debug_tensors(
-                "kernel_error",
-                array_start,
-                array_end,
-                array_value,
-                query_starts,
-                query_ends,
-                found_starts,
-                found_ends,
-                out,
-                scaling_factors_arr if use_scaling_factors else None,
-                {
-                    "error": str(e),
-                    "error_type": type(e).__name__,
-                    "num_tracks": num_tracks,
-                    "batch_size": batch_size,
-                    "sequence_length": sequence_length,
-                    "window_size": window_size,
-                    "max_number_intervals": max_number_intervals,
-                    "grid_size": grid_size,
-                    "block_size": block_size,
-                },
-            )
-        except Exception as save_error:
-            logger.error(f"Failed to save debug tensors: {save_error}")
-        raise
     return out
 
 
