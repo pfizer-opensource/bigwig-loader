@@ -6,6 +6,7 @@ from cupy._sorting.search import _searchsorted_code
 
 logger = logging.getLogger(__name__)
 
+
 _preamble = """
 template<typename T>
 __device__ bool _isnan(T val) {
@@ -90,6 +91,7 @@ def searchsorted(
         logger.debug(f"searchsorted: {n_empty} empty subarrays detected, applying fix")
         # Set empty subarrays to size=1 pointing to index 0
         # This prevents the kernel from accessing bins[-1] (undefined behavior)
+        sizes = sizes.copy()
         sizes[empty_mask] = 1
 
     idx = cp.arange(n_subarrays, dtype=queries.dtype)[:, cp.newaxis]
